@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { 
   useListProducts, 
   useListCategories,
@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, User, ShoppingCart, Coffee, Wrench, Package, Droplets, Filter, Scale, Zap, Thermometer, Star } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, User, ShoppingCart, Coffee, Wrench, Package, Droplets, Filter, Scale, Zap, Thermometer, Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product, SaleInputPaymentMethod } from '@workspace/api-client-react/src/generated/api.schemas';
 import {
@@ -60,6 +60,13 @@ export default function POS() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollCategories = useCallback((dir: 'left' | 'right') => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === 'left' ? -160 : 160, behavior: 'smooth' });
+  }, []);
   
   const { data: products, isLoading: isLoadingProducts } = useListProducts({ search, category: activeCategory || undefined });
   const { data: categories } = useListCategories();
@@ -157,27 +164,45 @@ export default function POS() {
               className="pl-9 h-10 w-full"
             />
           </div>
-          <ScrollArea className="w-1/2 whitespace-nowrap h-10 border rounded-md">
-            <div className="flex w-max space-x-2 p-1">
-              <Badge 
+          {/* Category scroll bar with arrow buttons */}
+          <div className="flex items-center gap-1 w-1/2 min-w-0">
+            <button
+              onClick={() => scrollCategories('left')}
+              className="shrink-0 w-7 h-8 flex items-center justify-center rounded border bg-white hover:bg-slate-100 text-muted-foreground transition-colors"
+              aria-label="Scroll izquierda"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div
+              ref={categoryScrollRef}
+              className="flex-1 overflow-x-auto flex items-center gap-1.5 py-0.5 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <Badge
                 variant={activeCategory === null ? 'default' : 'secondary'}
-                className="cursor-pointer hover:bg-primary/90 h-7"
+                className="cursor-pointer hover:bg-primary/90 h-7 shrink-0"
                 onClick={() => setActiveCategory(null)}
               >
                 Todos
               </Badge>
               {categories?.map(cat => (
-                <Badge 
-                  key={cat} 
+                <Badge
+                  key={cat}
                   variant={activeCategory === cat ? 'default' : 'secondary'}
-                  className="cursor-pointer hover:bg-primary/90 h-7 capitalize"
+                  className="cursor-pointer hover:bg-primary/90 h-7 capitalize shrink-0"
                   onClick={() => setActiveCategory(cat)}
                 >
                   {cat}
                 </Badge>
               ))}
             </div>
-          </ScrollArea>
+            <button
+              onClick={() => scrollCategories('right')}
+              className="shrink-0 w-7 h-8 flex items-center justify-center rounded border bg-white hover:bg-slate-100 text-muted-foreground transition-colors"
+              aria-label="Scroll derecha"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
         
         <ScrollArea className="flex-1 p-4">

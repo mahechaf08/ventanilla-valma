@@ -60,19 +60,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+        <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = location === item.href;
             const Icon = item.icon;
             return (
               <Link key={item.href} href={item.href}>
                 <div className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
+                  "relative flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all cursor-pointer",
                   isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-sidebar-foreground hover:bg-slate-100 dark:hover:bg-slate-800"
                 )}>
-                  <Icon className="w-4 h-4" />
+                  {isActive && (
+                    <span className="absolute left-0 top-1 bottom-1 w-1 rounded-r-full bg-white/40" />
+                  )}
+                  <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-white" : "text-muted-foreground")} />
                   {item.label}
                 </div>
               </Link>
