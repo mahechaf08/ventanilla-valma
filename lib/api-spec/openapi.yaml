@@ -3,20 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Point of Sale and Inventory Management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: products
+    description: Product catalog
+  - name: inventory
+    description: Inventory movements and stock
+  - name: sales
+    description: Sales and invoices
+  - name: dashboard
+    description: Dashboard summary data
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +31,530 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Products ──────────────────────────────────────────────────────────────
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /products/categories:
+    get:
+      operationId: listCategories
+      tags: [products]
+      summary: List all distinct categories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  # ── Inventory ─────────────────────────────────────────────────────────────
+  /inventory:
+    get:
+      operationId: listInventoryMovements
+      tags: [inventory]
+      summary: List inventory movements
+      parameters:
+        - name: productId
+          in: query
+          schema:
+            type: number
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [inbound, outbound]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryMovement"
+    post:
+      operationId: createInventoryMovement
+      tags: [inventory]
+      summary: Record an inventory movement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryMovementInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMovement"
+
+  /inventory/stock:
+    get:
+      operationId: listStock
+      tags: [inventory]
+      summary: List current stock levels for all products
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockLevel"
+
+  /inventory/low-stock:
+    get:
+      operationId: listLowStock
+      tags: [inventory]
+      summary: List products with stock at or below threshold
+      parameters:
+        - name: threshold
+          in: query
+          schema:
+            type: number
+            default: 5
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockLevel"
+
+  # ── Sales ─────────────────────────────────────────────────────────────────
+  /sales:
+    get:
+      operationId: listSales
+      tags: [sales]
+      summary: List all sales
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sale"
+    post:
+      operationId: createSale
+      tags: [sales]
+      summary: Create a new sale (checkout)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+        "400":
+          description: Validation error or insufficient stock
+
+  /sales/{id}:
+    get:
+      operationId: getSale
+      tags: [sales]
+      summary: Get a sale with its line items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+        "404":
+          description: Not found
+
+  /sales/recent:
+    get:
+      operationId: listRecentSales
+      tags: [sales]
+      summary: List the most recent sales (for dashboard activity feed)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sale"
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get high-level dashboard metrics
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    # ── Product ──────────────────────────────────────────────────────────────
+    Product:
+      type: object
+      required: [id, name, sku, price, category, stockQuantity, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        sku:
+          type: string
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+        category:
+          type: string
+        stockQuantity:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProductInput:
+      type: object
+      required: [name, sku, price, category]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        sku:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        category:
+          type: string
+          minLength: 1
+
+    ProductUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        sku:
+          type: string
+          minLength: 1
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+          minimum: 0
+        category:
+          type: string
+          minLength: 1
+
+    # ── Inventory ─────────────────────────────────────────────────────────────
+    InventoryMovement:
+      type: object
+      required: [id, productId, productName, type, quantity, createdAt]
+      properties:
+        id:
+          type: number
+        productId:
+          type: number
+        productName:
+          type: string
+        type:
+          type: string
+          enum: [inbound, outbound]
+        quantity:
+          type: number
+        reason:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    InventoryMovementInput:
+      type: object
+      required: [productId, type, quantity]
+      properties:
+        productId:
+          type: number
+        type:
+          type: string
+          enum: [inbound, outbound]
+        quantity:
+          type: number
+          minimum: 1
+        reason:
+          type: string
+        notes:
+          type: string
+
+    StockLevel:
+      type: object
+      required: [productId, productName, sku, category, stockQuantity, price]
+      properties:
+        productId:
+          type: number
+        productName:
+          type: string
+        sku:
+          type: string
+        category:
+          type: string
+        stockQuantity:
+          type: number
+        price:
+          type: number
+
+    # ── Sale / Invoice ────────────────────────────────────────────────────────
+    SaleItem:
+      type: object
+      required: [id, saleId, productId, productName, quantity, unitPrice, subtotal]
+      properties:
+        id:
+          type: number
+        saleId:
+          type: number
+        productId:
+          type: number
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        subtotal:
+          type: number
+
+    Sale:
+      type: object
+      required: [id, invoiceNumber, subtotal, tax, total, paymentMethod, status, items, createdAt]
+      properties:
+        id:
+          type: number
+        invoiceNumber:
+          type: string
+        customerName:
+          type: ["string", "null"]
+        subtotal:
+          type: number
+        tax:
+          type: number
+        total:
+          type: number
+        paymentMethod:
+          type: string
+          enum: [cash, card, other]
+        status:
+          type: string
+          enum: [completed, voided]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleItem"
+        createdAt:
+          type: string
+          format: date-time
+
+    SaleItemInput:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: number
+        quantity:
+          type: number
+          minimum: 1
+
+    SaleInput:
+      type: object
+      required: [items, paymentMethod]
+      properties:
+        customerName:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, card, other]
+        taxRate:
+          type: number
+          default: 0.08
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleItemInput"
+          minItems: 1
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      required: [totalProducts, totalCategories, lowStockCount, todaySalesCount, todayRevenue, allTimeRevenue, allTimeSalesCount]
+      properties:
+        totalProducts:
+          type: number
+        totalCategories:
+          type: number
+        lowStockCount:
+          type: number
+        todaySalesCount:
+          type: number
+        todayRevenue:
+          type: number
+        allTimeRevenue:
+          type: number
+        allTimeSalesCount:
+          type: number
