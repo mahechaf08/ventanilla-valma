@@ -36,15 +36,18 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET ?? "fallback-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
+    rolling: false,        // don't reset the clock on every request — keep the fixed 30-day window
     cookie: {
       httpOnly: true,
-      secure: false, // SSL is terminated at Replit proxy level
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      secure: false,       // SSL is terminated at Replit proxy level
+      maxAge: THIRTY_DAYS_MS,
       sameSite: "lax",
     },
   }),
