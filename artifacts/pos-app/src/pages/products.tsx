@@ -36,6 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { formatCOP } from '@/lib/currency';
 
 export default function Products() {
   const queryClient = useQueryClient();
@@ -159,7 +160,7 @@ export default function Products() {
                 <TableHead>SKU</TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Categoría</TableHead>
-                <TableHead className="text-right">Precio</TableHead>
+                <TableHead className="text-right">Precio (COP)</TableHead>
                 <TableHead className="text-right">Stock</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
@@ -183,7 +184,7 @@ export default function Products() {
                     <TableCell>
                       <Badge variant="outline" className="capitalize">{product.category}</Badge>
                     </TableCell>
-                    <TableCell className="text-right font-mono font-medium">${product.price.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-mono font-medium">{formatCOP(product.price)}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant={product.stockQuantity <= 0 ? "destructive" : product.stockQuantity < 10 ? "secondary" : "default"} className={product.stockQuantity > 9 ? "bg-success text-success-foreground hover:bg-success/90" : ""}>
                         {product.stockQuantity}
@@ -227,8 +228,8 @@ export default function Products() {
                 <Input id="sku" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="COF-001" className="font-mono text-sm uppercase" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Precio ($) *</Label>
-                <Input id="price" type="number" step="0.01" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="19.99" className="font-mono" />
+                <Label htmlFor="price">Precio (COP) *</Label>
+                <Input id="price" type="number" step="1000" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="25000" className="font-mono" />
               </div>
             </div>
 

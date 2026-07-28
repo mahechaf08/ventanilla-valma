@@ -23,10 +23,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen w-full bg-background overflow-hidden">
       <aside className="w-64 border-r bg-sidebar flex-shrink-0 flex flex-col">
         <div className="h-14 flex items-center px-4 border-b font-bold tracking-tight text-lg">
-          <div className="w-8 h-8 bg-primary text-primary-foreground rounded flex items-center justify-center mr-2">
-            POS
+          <div className="w-8 h-8 bg-primary text-primary-foreground rounded flex items-center justify-center mr-2 text-xs font-extrabold tracking-tighter">
+            VM
           </div>
-          Sistema
+          VM-COFFEE
         </div>
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
           {navItems.map((item) => {

@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatCOP } from '@/lib/currency';
 
 const metodoPago: Record<string, string> = {
   cash: 'Efectivo',
@@ -61,7 +62,7 @@ export default function Sales() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Pago</TableHead>
                 <TableHead className="text-right">Artículos</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Total (COP)</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -90,7 +91,7 @@ export default function Sales() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground font-mono">{sale.items.length}</TableCell>
-                    <TableCell className="text-right font-mono font-bold text-primary">${sale.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-primary">{formatCOP(sale.total)}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                         <Eye className="w-4 h-4" />
@@ -135,7 +136,7 @@ export default function Sales() {
             <div className="py-6 px-4 bg-slate-50 border rounded-md font-mono text-sm">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h3 className="font-bold text-lg">SISTEMA POS</h3>
+                  <h3 className="font-bold text-lg">VM-COFFEE</h3>
                   <p className="text-muted-foreground">Recibo {selectedSale.invoiceNumber}</p>
                 </div>
                 <div className="text-right text-muted-foreground text-xs">
@@ -153,31 +154,23 @@ export default function Sales() {
               
               <div className="space-y-3 mb-6">
                 <div className="grid grid-cols-12 text-xs font-bold text-muted-foreground pb-2 border-b">
-                  <div className="col-span-6">ARTÍCULO</div>
-                  <div className="col-span-3 text-right">CANT×PRECIO</div>
+                  <div className="col-span-5">ARTÍCULO</div>
+                  <div className="col-span-4 text-right">CANT×PRECIO</div>
                   <div className="col-span-3 text-right">TOTAL</div>
                 </div>
                 {selectedSale.items.map((item: any) => (
                   <div key={item.id} className="grid grid-cols-12 items-start py-1">
-                    <div className="col-span-6 font-sans text-sm">{item.productName}</div>
-                    <div className="col-span-3 text-right text-xs text-muted-foreground mt-0.5">{item.quantity} × ${item.unitPrice.toFixed(2)}</div>
-                    <div className="col-span-3 text-right">${item.subtotal.toFixed(2)}</div>
+                    <div className="col-span-5 font-sans text-sm">{item.productName}</div>
+                    <div className="col-span-4 text-right text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCOP(item.unitPrice)}</div>
+                    <div className="col-span-3 text-right">{formatCOP(item.subtotal)}</div>
                   </div>
                 ))}
               </div>
               
               <div className="space-y-2 border-t pt-4">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal</span>
-                  <span>${selectedSale.subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Impuesto</span>
-                  <span>${selectedSale.tax.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-base mt-2 pt-2 border-t border-slate-300">
+                <div className="flex justify-between font-bold text-base pt-2">
                   <span>Total</span>
-                  <span className="text-primary">${selectedSale.total.toFixed(2)}</span>
+                  <span className="text-primary">{formatCOP(selectedSale.total)}</span>
                 </div>
               </div>
               

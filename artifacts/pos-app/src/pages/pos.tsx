@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { formatCOP } from '@/lib/currency';
 
 interface CartItem {
   product: Product;
@@ -92,9 +93,7 @@ export default function POS() {
   };
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
-  const taxRate = 0.08;
-  const tax = subtotal * taxRate;
-  const total = subtotal + tax;
+  const total = subtotal;
 
   const handleCheckout = () => {
     if (cart.length === 0) return;
@@ -103,7 +102,7 @@ export default function POS() {
       data: {
         customerName: customerName.trim() || undefined,
         paymentMethod,
-        taxRate,
+        taxRate: 0,
         items: cart.map(item => ({
           productId: item.product.id,
           quantity: item.quantity
@@ -186,7 +185,7 @@ export default function POS() {
                 >
                   <div className="font-medium line-clamp-2 leading-tight mb-2 h-10">{product.name}</div>
                   <div className="flex items-end justify-between mt-auto">
-                    <div className="font-mono text-lg font-bold">${product.price.toFixed(2)}</div>
+                    <div className="font-mono text-lg font-bold">{formatCOP(product.price)}</div>
                   </div>
                   <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
                     <Badge variant="outline" className="text-[10px] uppercase font-mono">{product.category}</Badge>
@@ -227,11 +226,11 @@ export default function POS() {
                   <div className="flex justify-between items-start">
                     <div className="font-medium text-sm leading-tight pr-4">{item.product.name}</div>
                     <div className="font-mono font-semibold text-sm">
-                      ${(item.product.price * item.quantity).toFixed(2)}
+                      {formatCOP(item.product.price * item.quantity)}
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-1">
-                    <div className="text-xs text-muted-foreground font-mono">${item.product.price.toFixed(2)} / u.</div>
+                    <div className="text-xs text-muted-foreground font-mono">{formatCOP(item.product.price)} / u.</div>
                     <div className="flex items-center gap-1 bg-slate-100 rounded-md p-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.product.id, -1)}>
                         {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-destructive" /> : <Minus className="w-3 h-3" />}
@@ -250,18 +249,10 @@ export default function POS() {
 
         <div className="p-4 bg-slate-50 border-t">
           <div className="space-y-2 mb-4">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span className="font-mono">${subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Impuesto (8%)</span>
-              <span className="font-mono">${tax.toFixed(2)}</span>
-            </div>
             <Separator />
             <div className="flex justify-between font-bold text-lg">
               <span>Total</span>
-              <span className="font-mono text-primary">${total.toFixed(2)}</span>
+              <span className="font-mono text-primary">{formatCOP(total)}</span>
             </div>
           </div>
           <Button 
@@ -270,7 +261,7 @@ export default function POS() {
             disabled={cart.length === 0}
             onClick={() => setCheckoutOpen(true)}
           >
-            Cobrar ${total.toFixed(2)}
+            Cobrar {formatCOP(total)}
           </Button>
         </div>
       </div>
@@ -284,7 +275,7 @@ export default function POS() {
           <div className="grid gap-6 py-4">
             <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-lg">
               <span className="text-sm text-muted-foreground mb-1">Monto Total</span>
-              <span className="text-4xl font-bold font-mono tracking-tighter">${total.toFixed(2)}</span>
+              <span className="text-4xl font-bold font-mono tracking-tighter">{formatCOP(total)}</span>
             </div>
 
             <div className="space-y-3">
@@ -342,9 +333,9 @@ export default function POS() {
           {receiptSale && (
             <div className="py-6 px-4 bg-white border border-dashed border-slate-300 mx-auto w-full max-w-[320px] font-mono text-sm">
               <div className="text-center mb-6">
-                <h3 className="font-bold text-lg mb-1">SISTEMA POS</h3>
+                <h3 className="font-bold text-lg mb-1">VM-COFFEE</h3>
                 <p className="text-muted-foreground text-xs">Recibo {receiptSale.invoiceNumber}</p>
-                <p className="text-muted-foreground text-xs">{new Date(receiptSale.createdAt).toLocaleString('es')}</p>
+                <p className="text-muted-foreground text-xs">{new Date(receiptSale.createdAt).toLocaleString('es-CO')}</p>
               </div>
               
               <div className="space-y-2 mb-4">
@@ -352,9 +343,9 @@ export default function POS() {
                   <div key={item.id} className="flex justify-between items-start">
                     <div className="pr-4">
                       <div>{item.productName}</div>
-                      <div className="text-xs text-muted-foreground">{item.quantity} x ${item.unitPrice.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">{item.quantity} x {formatCOP(item.unitPrice)}</div>
                     </div>
-                    <div>${item.subtotal.toFixed(2)}</div>
+                    <div>{formatCOP(item.subtotal)}</div>
                   </div>
                 ))}
               </div>
@@ -362,17 +353,9 @@ export default function POS() {
               <Separator className="border-dashed my-4" />
               
               <div className="space-y-1">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal</span>
-                  <span>${receiptSale.subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Impuesto</span>
-                  <span>${receiptSale.tax.toFixed(2)}</span>
-                </div>
                 <div className="flex justify-between font-bold text-base mt-2 pt-2 border-t border-dashed">
                   <span>Total</span>
-                  <span>${receiptSale.total.toFixed(2)}</span>
+                  <span>{formatCOP(receiptSale.total)}</span>
                 </div>
               </div>
               

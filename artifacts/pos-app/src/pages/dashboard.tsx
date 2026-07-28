@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Activity, DollarSign, Package, AlertTriangle, ArrowRight, ShoppingCart } from 'lucide-react';
 import { Link } from 'wouter';
+import { formatCOP } from '@/lib/currency';
 
 const metodoPago: Record<string, string> = {
   cash: 'Efectivo',
@@ -30,7 +31,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Ingresos de Hoy"
-            value={isLoadingSummary ? null : `$${summary?.todayRevenue.toFixed(2)}`}
+            value={isLoadingSummary ? null : formatCOP(summary?.todayRevenue ?? 0)}
             icon={DollarSign}
             trend={isLoadingSummary ? null : `${summary?.todaySalesCount} ventas hoy`}
           />
@@ -49,7 +50,7 @@ export default function Dashboard() {
           />
           <MetricCard
             title="Ingresos Totales"
-            value={isLoadingSummary ? null : `$${summary?.allTimeRevenue.toFixed(2)}`}
+            value={isLoadingSummary ? null : formatCOP(summary?.allTimeRevenue ?? 0)}
             icon={Activity}
             trend={isLoadingSummary ? null : `${summary?.allTimeSalesCount} ventas totales`}
           />
@@ -83,7 +84,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold text-sm font-mono">${sale.total.toFixed(2)}</div>
+                        <div className="font-semibold text-sm font-mono">{formatCOP(sale.total)}</div>
                         <div className="text-xs text-muted-foreground">{metodoPago[sale.paymentMethod] ?? sale.paymentMethod}</div>
                       </div>
                     </div>
