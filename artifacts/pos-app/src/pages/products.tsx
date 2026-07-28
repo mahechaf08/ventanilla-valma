@@ -45,7 +45,6 @@ export default function Products() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   
-  // Form State
   const [formData, setFormData] = useState({
     name: '', sku: '', category: '', price: '', description: ''
   });
@@ -77,7 +76,7 @@ export default function Products() {
 
   const handleSave = () => {
     if (!formData.name || !formData.sku || !formData.category || !formData.price) {
-      toast.error("Please fill in all required fields");
+      toast.error("Por favor complete todos los campos requeridos");
       return;
     }
 
@@ -98,7 +97,7 @@ export default function Products() {
           queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
           setIsFormOpen(false);
-          toast.success("Product updated");
+          toast.success("Producto actualizado");
         }
       });
     } else {
@@ -109,7 +108,7 @@ export default function Products() {
           queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
           setIsFormOpen(false);
-          toast.success("Product created");
+          toast.success("Producto creado");
         }
       });
     }
@@ -123,7 +122,7 @@ export default function Products() {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setDeleteConfirmOpen(false);
         setProductToDelete(null);
-        toast.success("Product deleted");
+        toast.success("Producto eliminado");
       }
     });
   };
@@ -132,11 +131,11 @@ export default function Products() {
     <div className="flex-1 flex flex-col h-full bg-white">
       <div className="p-6 border-b flex items-center justify-between bg-slate-50">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Product Catalog</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage your inventory items, pricing, and details.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Catálogo de Productos</h1>
+          <p className="text-sm text-muted-foreground mt-1">Administra tus artículos, precios y detalles.</p>
         </div>
         <Button onClick={handleOpenNew} className="gap-2">
-          <Plus className="w-4 h-4" /> Add Product
+          <Plus className="w-4 h-4" /> Agregar Producto
         </Button>
       </div>
 
@@ -145,7 +144,7 @@ export default function Products() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search products..." 
+              placeholder="Buscar productos..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -158,9 +157,9 @@ export default function Products() {
             <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <TableRow>
                 <TableHead>SKU</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-right">Price</TableHead>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Categoría</TableHead>
+                <TableHead className="text-right">Precio</TableHead>
                 <TableHead className="text-right">Stock</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
@@ -168,12 +167,12 @@ export default function Products() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading products...</TableCell>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Cargando productos...</TableCell>
                 </TableRow>
               ) : products?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                    No products found. Add one to get started.
+                    No se encontraron productos. Agrega uno para comenzar.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -214,12 +213,12 @@ export default function Products() {
       <Sheet open={isFormOpen} onOpenChange={setIsFormOpen}>
         <SheetContent className="w-[400px] sm:w-[540px] flex flex-col border-l">
           <SheetHeader>
-            <SheetTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</SheetTitle>
+            <SheetTitle>{editingProduct ? 'Editar Producto' : 'Agregar Nuevo Producto'}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto py-6 space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Product Name *</Label>
-              <Input id="name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Premium Coffee Beans" />
+              <Label htmlFor="name">Nombre del Producto *</Label>
+              <Input id="name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Café Premium en Grano" />
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -228,37 +227,37 @@ export default function Products() {
                 <Input id="sku" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="COF-001" className="font-mono text-sm uppercase" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Price ($) *</Label>
+                <Label htmlFor="price">Precio ($) *</Label>
                 <Input id="price" type="number" step="0.01" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="19.99" className="font-mono" />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <Input id="category" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} placeholder="Beverages" />
+              <Label htmlFor="category">Categoría *</Label>
+              <Input id="category" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} placeholder="Bebidas" />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description (Optional)</Label>
+              <Label htmlFor="description">Descripción (Opcional)</Label>
               <Textarea 
                 id="description" 
                 value={formData.description} 
                 onChange={e => setFormData({...formData, description: e.target.value})} 
-                placeholder="Product details..."
+                placeholder="Detalles del producto..."
                 className="resize-none h-24"
               />
             </div>
             
             {!editingProduct && (
               <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-sm border border-blue-100 mt-6">
-                <strong>Note:</strong> Initial stock quantity must be set via the Inventory Movements page after creating the product.
+                <strong>Nota:</strong> La cantidad de stock inicial debe establecerse desde la página de Movimientos de Inventario después de crear el producto.
               </div>
             )}
           </div>
           <SheetFooter className="mt-auto pt-6 border-t">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={createProduct.isPending || updateProduct.isPending}>
-              {editingProduct ? 'Save Changes' : 'Create Product'}
+              {editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -267,15 +266,15 @@ export default function Products() {
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>¿Estás completamente seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the product "{productToDelete?.name}". This action cannot be undone.
+              Esto eliminará permanentemente el producto &ldquo;{productToDelete?.name}&rdquo;. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {deleteProduct.isPending ? 'Deleting...' : 'Delete Product'}
+              {deleteProduct.isPending ? 'Eliminando...' : 'Eliminar Producto'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

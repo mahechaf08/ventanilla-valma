@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   useListProducts, 
   useListCategories,
@@ -32,6 +32,12 @@ interface CartItem {
   quantity: number;
 }
 
+const metodoPago: Record<string, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  other: 'Otro',
+};
+
 export default function POS() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -50,7 +56,7 @@ export default function POS() {
 
   const addToCart = (product: Product) => {
     if (product.stockQuantity <= 0) {
-      toast.error('Out of stock');
+      toast.error('Sin stock disponible');
       return;
     }
     
@@ -58,7 +64,7 @@ export default function POS() {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
         if (existing.quantity >= product.stockQuantity) {
-          toast.error('Cannot add more than available stock');
+          toast.error('No se puede agregar más del stock disponible');
           return prev;
         }
         return prev.map(item => 
@@ -76,7 +82,7 @@ export default function POS() {
       if (item.product.id === productId) {
         const newQ = item.quantity + delta;
         if (newQ > item.product.stockQuantity) {
-          toast.error('Cannot exceed available stock');
+          toast.error('No puede superar el stock disponible');
           return item;
         }
         return { ...item, quantity: Math.max(0, newQ) };
@@ -86,7 +92,7 @@ export default function POS() {
   };
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
-  const taxRate = 0.08; // 8% tax
+  const taxRate = 0.08;
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
 
@@ -113,17 +119,17 @@ export default function POS() {
         queryClient.invalidateQueries({ queryKey: getListSalesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListRecentSalesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-        toast.success('Sale completed successfully');
+        toast.success('Venta completada exitosamente');
       },
       onError: () => {
-        toast.error('Failed to complete sale');
+        toast.error('Error al completar la venta');
       }
     });
   };
 
   return (
     <div className="flex h-full w-full bg-slate-50 overflow-hidden">
-      {/* Product Catalog Area */}
+      {/* Área de Catálogo de Productos */}
       <div className="flex-1 flex flex-col h-full border-r overflow-hidden">
         <div className="p-4 bg-white border-b flex-shrink-0 flex items-center gap-4">
           <div className="relative flex-1">
@@ -131,7 +137,7 @@ export default function POS() {
             <Input 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products by name or SKU..." 
+              placeholder="Buscar productos por nombre o SKU..." 
               className="pl-9 h-10 w-full"
             />
           </div>
@@ -142,7 +148,7 @@ export default function POS() {
                 className="cursor-pointer hover:bg-primary/90 h-7"
                 onClick={() => setActiveCategory(null)}
               >
-                All
+                Todos
               </Badge>
               {categories?.map(cat => (
                 <Badge 
@@ -168,7 +174,7 @@ export default function POS() {
           ) : products?.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
               <Search className="w-12 h-12 mb-4 opacity-20" />
-              <p>No products found</p>
+              <p>No se encontraron productos</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -185,7 +191,7 @@ export default function POS() {
                   <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
                     <Badge variant="outline" className="text-[10px] uppercase font-mono">{product.category}</Badge>
                     <Badge variant={product.stockQuantity > 0 ? "secondary" : "destructive"} className="text-[10px]">
-                      {product.stockQuantity} in stock
+                      {product.stockQuantity} en stock
                     </Badge>
                   </div>
                 </div>
@@ -195,15 +201,15 @@ export default function POS() {
         </ScrollArea>
       </div>
 
-      {/* Cart Area */}
+      {/* Área del Carrito */}
       <div className="w-96 bg-white flex-shrink-0 flex flex-col h-full">
         <div className="p-4 border-b bg-slate-100 flex items-center justify-between">
           <h2 className="font-semibold flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4" /> Current Sale
+            <ShoppingCart className="w-4 h-4" /> Venta Actual
           </h2>
           {cart.length > 0 && (
             <Button variant="ghost" size="sm" onClick={() => setCart([])} className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10">
-              Clear
+              Vaciar
             </Button>
           )}
         </div>
@@ -212,7 +218,7 @@ export default function POS() {
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground mt-32">
               <ShoppingCart className="w-12 h-12 mb-4 opacity-20" />
-              <p className="text-sm">Cart is empty</p>
+              <p className="text-sm">El carrito está vacío</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -225,7 +231,7 @@ export default function POS() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-1">
-                    <div className="text-xs text-muted-foreground font-mono">${item.product.price.toFixed(2)} / ea</div>
+                    <div className="text-xs text-muted-foreground font-mono">${item.product.price.toFixed(2)} / u.</div>
                     <div className="flex items-center gap-1 bg-slate-100 rounded-md p-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.product.id, -1)}>
                         {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-destructive" /> : <Minus className="w-3 h-3" />}
@@ -249,7 +255,7 @@ export default function POS() {
               <span className="font-mono">${subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Tax (8%)</span>
+              <span className="text-muted-foreground">Impuesto (8%)</span>
               <span className="font-mono">${tax.toFixed(2)}</span>
             </div>
             <Separator />
@@ -264,81 +270,81 @@ export default function POS() {
             disabled={cart.length === 0}
             onClick={() => setCheckoutOpen(true)}
           >
-            Charge ${total.toFixed(2)}
+            Cobrar ${total.toFixed(2)}
           </Button>
         </div>
       </div>
 
-      {/* Checkout Dialog */}
+      {/* Diálogo de Pago */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Complete Payment</DialogTitle>
+            <DialogTitle>Completar Pago</DialogTitle>
           </DialogHeader>
           <div className="grid gap-6 py-4">
             <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-lg">
-              <span className="text-sm text-muted-foreground mb-1">Total Amount</span>
+              <span className="text-sm text-muted-foreground mb-1">Monto Total</span>
               <span className="text-4xl font-bold font-mono tracking-tighter">${total.toFixed(2)}</span>
             </div>
 
             <div className="space-y-3">
-              <Label>Payment Method</Label>
+              <Label>Método de Pago</Label>
               <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as SaleInputPaymentMethod)} className="grid grid-cols-3 gap-2">
                 <Label
                   className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer ${paymentMethod === 'card' ? 'border-primary bg-primary/5' : ''}`}
                 >
                   <RadioGroupItem value="card" className="sr-only" />
                   <CreditCard className="mb-2 h-6 w-6" />
-                  Card
+                  Tarjeta
                 </Label>
                 <Label
                   className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer ${paymentMethod === 'cash' ? 'border-primary bg-primary/5' : ''}`}
                 >
                   <RadioGroupItem value="cash" className="sr-only" />
                   <Banknote className="mb-2 h-6 w-6" />
-                  Cash
+                  Efectivo
                 </Label>
                 <Label
                   className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer ${paymentMethod === 'other' ? 'border-primary bg-primary/5' : ''}`}
                 >
                   <RadioGroupItem value="other" className="sr-only" />
                   <User className="mb-2 h-6 w-6" />
-                  Other
+                  Otro
                 </Label>
               </RadioGroup>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="customer">Customer Name (Optional)</Label>
+              <Label htmlFor="customer">Nombre del Cliente (Opcional)</Label>
               <Input 
                 id="customer" 
-                placeholder="Walk-in customer" 
+                placeholder="Cliente en tienda" 
                 value={customerName}
                 onChange={e => setCustomerName(e.target.value)}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCheckoutOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCheckoutOpen(false)}>Cancelar</Button>
             <Button onClick={handleCheckout} disabled={createSale.isPending}>
-              {createSale.isPending ? 'Processing...' : 'Confirm Payment'}
+              {createSale.isPending ? 'Procesando...' : 'Confirmar Pago'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Receipt Dialog */}
+      {/* Diálogo de Recibo */}
       <Dialog open={!!receiptSale} onOpenChange={(open) => !open && setReceiptSale(null)}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle className="text-center">Sale Completed</DialogTitle>
+            <DialogTitle className="text-center">Venta Completada</DialogTitle>
           </DialogHeader>
           {receiptSale && (
             <div className="py-6 px-4 bg-white border border-dashed border-slate-300 mx-auto w-full max-w-[320px] font-mono text-sm">
               <div className="text-center mb-6">
-                <h3 className="font-bold text-lg mb-1">POS SYSTEM</h3>
-                <p className="text-muted-foreground text-xs">Receipt {receiptSale.invoiceNumber}</p>
-                <p className="text-muted-foreground text-xs">{new Date(receiptSale.createdAt).toLocaleString()}</p>
+                <h3 className="font-bold text-lg mb-1">SISTEMA POS</h3>
+                <p className="text-muted-foreground text-xs">Recibo {receiptSale.invoiceNumber}</p>
+                <p className="text-muted-foreground text-xs">{new Date(receiptSale.createdAt).toLocaleString('es')}</p>
               </div>
               
               <div className="space-y-2 mb-4">
@@ -361,7 +367,7 @@ export default function POS() {
                   <span>${receiptSale.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Tax</span>
+                  <span>Impuesto</span>
                   <span>${receiptSale.tax.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base mt-2 pt-2 border-t border-dashed">
@@ -371,14 +377,14 @@ export default function POS() {
               </div>
               
               <div className="mt-6 text-center text-xs text-muted-foreground">
-                <p>Paid via {receiptSale.paymentMethod}</p>
-                {receiptSale.customerName && <p>Customer: {receiptSale.customerName}</p>}
-                <p className="mt-4">Thank you for your business!</p>
+                <p>Pagado con {metodoPago[receiptSale.paymentMethod] ?? receiptSale.paymentMethod}</p>
+                {receiptSale.customerName && <p>Cliente: {receiptSale.customerName}</p>}
+                <p className="mt-4">¡Gracias por su compra!</p>
               </div>
             </div>
           )}
           <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setReceiptSale(null)} className="w-full">New Sale</Button>
+            <Button onClick={() => setReceiptSale(null)} className="w-full">Nueva Venta</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

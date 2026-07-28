@@ -9,6 +9,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
@@ -16,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDownLeft, ArrowUpRight, Plus, Search } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -47,13 +48,13 @@ export default function Inventory() {
 
   const handleSave = () => {
     if (!formData.productId || !formData.quantity) {
-      toast.error('Product and Quantity are required');
+      toast.error('El producto y la cantidad son requeridos');
       return;
     }
 
     const qty = parseInt(formData.quantity, 10);
     if (isNaN(qty) || qty <= 0) {
-      toast.error('Quantity must be a positive integer');
+      toast.error('La cantidad debe ser un número entero positivo');
       return;
     }
 
@@ -74,10 +75,10 @@ export default function Inventory() {
         queryClient.invalidateQueries({ queryKey: getListInventoryMovementsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-        toast.success('Inventory movement recorded');
+        toast.success('Movimiento de inventario registrado');
       },
       onError: (err: any) => {
-        toast.error(err.message || 'Failed to record movement');
+        toast.error(err.message || 'Error al registrar el movimiento');
       }
     });
   };
@@ -86,11 +87,11 @@ export default function Inventory() {
     <div className="flex-1 flex flex-col h-full bg-white">
       <div className="p-6 border-b flex items-center justify-between bg-slate-50">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Inventory Movements</h1>
-          <p className="text-sm text-muted-foreground mt-1">Track stock adjustments and restocks over time.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Movimientos de Inventario</h1>
+          <p className="text-sm text-muted-foreground mt-1">Registra ajustes de stock y reposiciones a lo largo del tiempo.</p>
         </div>
         <Button onClick={() => setIsFormOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Record Movement
+          <Plus className="w-4 h-4" /> Registrar Movimiento
         </Button>
       </div>
 
@@ -99,38 +100,38 @@ export default function Inventory() {
           <Table>
             <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <TableRow>
-                <TableHead className="w-[180px]">Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead className="text-right">Quantity</TableHead>
-                <TableHead>Reason</TableHead>
+                <TableHead className="w-[180px]">Fecha</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Producto</TableHead>
+                <TableHead className="text-right">Cantidad</TableHead>
+                <TableHead>Motivo</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoadingMovements ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading movements...</TableCell>
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Cargando movimientos...</TableCell>
                 </TableRow>
               ) : movements?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                    No inventory movements recorded yet.
+                    No hay movimientos de inventario registrados aún.
                   </TableCell>
                 </TableRow>
               ) : (
                 movements?.map((movement) => (
                   <TableRow key={movement.id}>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap font-mono">
-                      {format(new Date(movement.createdAt), 'MMM d, yyyy h:mm a')}
+                      {format(new Date(movement.createdAt), "d MMM yyyy, h:mm a", { locale: es })}
                     </TableCell>
                     <TableCell>
                       {movement.type === 'inbound' ? (
                         <Badge className="bg-success text-success-foreground hover:bg-success/90 font-mono text-[10px] uppercase gap-1">
-                          <ArrowDownLeft className="w-3 h-3" /> Inbound
+                          <ArrowDownLeft className="w-3 h-3" /> Entrada
                         </Badge>
                       ) : (
                         <Badge variant="destructive" className="font-mono text-[10px] uppercase gap-1">
-                          <ArrowUpRight className="w-3 h-3" /> Outbound
+                          <ArrowUpRight className="w-3 h-3" /> Salida
                         </Badge>
                       )}
                     </TableCell>
@@ -152,11 +153,11 @@ export default function Inventory() {
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Record Inventory Movement</DialogTitle>
+            <DialogTitle>Registrar Movimiento de Inventario</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label>Movement Type</Label>
+              <Label>Tipo de Movimiento</Label>
               <RadioGroup 
                 value={formData.type} 
                 onValueChange={(v) => setFormData({...formData, type: v as InventoryMovementInputType})} 
@@ -167,27 +168,27 @@ export default function Inventory() {
                 >
                   <RadioGroupItem value="inbound" className="sr-only" />
                   <ArrowDownLeft className="h-4 w-4" />
-                  Stock In
+                  Entrada de Stock
                 </Label>
                 <Label
                   className={`flex items-center justify-center gap-2 rounded-md border-2 border-muted bg-transparent p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer ${formData.type === 'outbound' ? 'border-destructive bg-destructive/5 text-destructive' : ''}`}
                 >
                   <RadioGroupItem value="outbound" className="sr-only" />
                   <ArrowUpRight className="h-4 w-4" />
-                  Stock Out
+                  Salida de Stock
                 </Label>
               </RadioGroup>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="product">Product</Label>
+              <Label htmlFor="product">Producto</Label>
               <select 
                 id="product" 
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={formData.productId}
                 onChange={e => setFormData({...formData, productId: e.target.value})}
               >
-                <option value="" disabled>Select a product...</option>
+                <option value="" disabled>Seleccionar un producto...</option>
                 {products?.map(p => (
                   <option key={p.id} value={p.id}>{p.name} (Stock: {p.stockQuantity})</option>
                 ))}
@@ -195,7 +196,7 @@ export default function Inventory() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="qty">Quantity</Label>
+              <Label htmlFor="qty">Cantidad</Label>
               <Input 
                 id="qty" 
                 type="number" 
@@ -207,20 +208,20 @@ export default function Inventory() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="reason">Reason (Optional)</Label>
+              <Label htmlFor="reason">Motivo (Opcional)</Label>
               <Input 
                 id="reason" 
-                placeholder="e.g. Supplier delivery, damaged goods..." 
+                placeholder="ej. Entrega de proveedor, mercancía dañada..." 
                 value={formData.reason}
                 onChange={e => setFormData({...formData, reason: e.target.value})}
               />
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="notes">Additional Notes</Label>
+              <Label htmlFor="notes">Notas Adicionales</Label>
               <Textarea 
                 id="notes" 
-                placeholder="Reference numbers or details..." 
+                placeholder="Números de referencia o detalles..." 
                 className="resize-none h-20"
                 value={formData.notes}
                 onChange={e => setFormData({...formData, notes: e.target.value})}
@@ -228,9 +229,9 @@ export default function Inventory() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={createMovement.isPending}>
-              {createMovement.isPending ? 'Saving...' : 'Save Movement'}
+              {createMovement.isPending ? 'Guardando...' : 'Guardar Movimiento'}
             </Button>
           </DialogFooter>
         </DialogContent>

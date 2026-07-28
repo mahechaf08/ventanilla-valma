@@ -5,8 +5,15 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { Activity, DollarSign, Package, AlertTriangle, ArrowRight, ShoppingCart } from 'lucide-react';
 import { Link } from 'wouter';
+
+const metodoPago: Record<string, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  other: 'Otro',
+};
 
 export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
@@ -16,44 +23,44 @@ export default function Dashboard() {
     <div className="flex-1 overflow-y-auto p-8 bg-background">
       <div className="max-w-6xl mx-auto space-y-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Overview of your shop's performance.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Panel</h1>
+          <p className="text-muted-foreground mt-1">Resumen del rendimiento de tu tienda.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
-            title="Today's Revenue"
+            title="Ingresos de Hoy"
             value={isLoadingSummary ? null : `$${summary?.todayRevenue.toFixed(2)}`}
             icon={DollarSign}
-            trend={isLoadingSummary ? null : `${summary?.todaySalesCount} sales today`}
+            trend={isLoadingSummary ? null : `${summary?.todaySalesCount} ventas hoy`}
           />
           <MetricCard
-            title="Total Products"
+            title="Total de Productos"
             value={isLoadingSummary ? null : summary?.totalProducts}
             icon={Package}
-            trend={isLoadingSummary ? null : `Across ${summary?.totalCategories} categories`}
+            trend={isLoadingSummary ? null : `En ${summary?.totalCategories} categorías`}
           />
           <MetricCard
-            title="Low Stock Alerts"
+            title="Alertas de Stock Bajo"
             value={isLoadingSummary ? null : summary?.lowStockCount}
             icon={AlertTriangle}
-            trend="Items needing restock"
+            trend="Artículos que necesitan reposición"
             alert={summary?.lowStockCount ? summary.lowStockCount > 0 : false}
           />
           <MetricCard
-            title="All-Time Revenue"
+            title="Ingresos Totales"
             value={isLoadingSummary ? null : `$${summary?.allTimeRevenue.toFixed(2)}`}
             icon={Activity}
-            trend={isLoadingSummary ? null : `${summary?.allTimeSalesCount} total sales`}
+            trend={isLoadingSummary ? null : `${summary?.allTimeSalesCount} ventas totales`}
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between pb-2 border-b mb-4">
-              <CardTitle className="text-base font-semibold">Recent Sales Activity</CardTitle>
+              <CardTitle className="text-base font-semibold">Actividad de Ventas Recientes</CardTitle>
               <Link href="/sales" className="text-sm text-primary flex items-center gap-1 hover:underline">
-                View all <ArrowRight className="w-4 h-4" />
+                Ver todo <ArrowRight className="w-4 h-4" />
               </Link>
             </CardHeader>
             <CardContent>
@@ -63,7 +70,7 @@ export default function Dashboard() {
                 </div>
               ) : recentSales?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground text-sm">
-                  No sales recorded yet.
+                  No hay ventas registradas aún.
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -72,12 +79,12 @@ export default function Dashboard() {
                       <div>
                         <div className="font-medium text-sm font-mono">{sale.invoiceNumber}</div>
                         <div className="text-xs text-muted-foreground">
-                          {format(new Date(sale.createdAt), 'MMM d, h:mm a')} • {sale.items.length} items
+                          {format(new Date(sale.createdAt), "d MMM, h:mm a", { locale: es })} • {sale.items.length} artículo{sale.items.length !== 1 ? 's' : ''}
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-sm font-mono">${sale.total.toFixed(2)}</div>
-                        <div className="text-xs text-muted-foreground capitalize">{sale.paymentMethod}</div>
+                        <div className="text-xs text-muted-foreground">{metodoPago[sale.paymentMethod] ?? sale.paymentMethod}</div>
                       </div>
                     </div>
                   ))}
@@ -88,7 +95,7 @@ export default function Dashboard() {
           
           <Card className="bg-slate-50 dark:bg-slate-900 border-none">
             <CardHeader>
-              <CardTitle className="text-base font-semibold">Quick Actions</CardTitle>
+              <CardTitle className="text-base font-semibold">Acciones Rápidas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <Link href="/pos">
@@ -97,8 +104,8 @@ export default function Dashboard() {
                     <ShoppingCart className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-sm font-medium group-hover:text-primary transition-colors">New Sale</div>
-                    <div className="text-xs text-muted-foreground">Open the POS terminal</div>
+                    <div className="text-sm font-medium group-hover:text-primary transition-colors">Nueva Venta</div>
+                    <div className="text-xs text-muted-foreground">Abrir el terminal de ventas</div>
                   </div>
                 </div>
               </Link>
@@ -108,8 +115,8 @@ export default function Dashboard() {
                     <Package className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-sm font-medium group-hover:text-primary transition-colors">Add Product</div>
-                    <div className="text-xs text-muted-foreground">Update your catalog</div>
+                    <div className="text-sm font-medium group-hover:text-primary transition-colors">Agregar Producto</div>
+                    <div className="text-xs text-muted-foreground">Actualizar tu catálogo</div>
                   </div>
                 </div>
               </Link>

@@ -12,11 +12,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   const navItems = [
-    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/pos', label: 'Point of Sale', icon: ShoppingCart },
-    { href: '/products', label: 'Catalog', icon: Package },
-    { href: '/inventory', label: 'Inventory', icon: ArrowRightLeft },
-    { href: '/sales', label: 'Sales', icon: ReceiptText },
+    { href: '/', label: 'Panel', icon: LayoutDashboard },
+    { href: '/pos', label: 'Punto de Venta', icon: ShoppingCart },
+    { href: '/products', label: 'Catálogo', icon: Package },
+    { href: '/inventory', label: 'Inventario', icon: ArrowRightLeft },
+    { href: '/sales', label: 'Ventas', icon: ReceiptText },
   ];
 
   return (
@@ -26,7 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="w-8 h-8 bg-primary text-primary-foreground rounded flex items-center justify-center mr-2">
             POS
           </div>
-          System
+          Sistema
         </div>
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
