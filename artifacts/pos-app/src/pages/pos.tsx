@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, User, ShoppingCart } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, User, ShoppingCart, Coffee, Wrench, Package, Droplets, Filter, Scale, Zap, Thermometer, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product, SaleInputPaymentMethod } from '@workspace/api-client-react/src/generated/api.schemas';
 import {
@@ -38,6 +38,23 @@ const metodoPago: Record<string, string> = {
   card: 'Tarjeta',
   other: 'Otro',
 };
+
+function getCategoryStyle(category: string): { icon: React.ReactNode; bg: string; iconColor: string } {
+  const c = category.toLowerCase();
+  if (c.includes('bebida') || c.includes('bever') || c.includes('café') || c.includes('coffee') || c.includes('brew') || c.includes('milk') || c.includes('leche') || c.includes('syrup') || c.includes('jarabe') || c.includes('oat'))
+    return { icon: <Coffee className="w-6 h-6" />, bg: 'bg-amber-50', iconColor: 'text-amber-500' };
+  if (c.includes('equip') || c.includes('machine') || c.includes('kettle') || c.includes('grinder') || c.includes('scale') || c.includes('báscula'))
+    return { icon: <Wrench className="w-6 h-6" />, bg: 'bg-blue-50', iconColor: 'text-blue-500' };
+  if (c.includes('filter') || c.includes('filtro'))
+    return { icon: <Filter className="w-6 h-6" />, bg: 'bg-slate-50', iconColor: 'text-slate-500' };
+  if (c.includes('accesorio') || c.includes('accessor') || c.includes('cup') || c.includes('mug') || c.includes('taza') || c.includes('thermos') || c.includes('termo') || c.includes('travel'))
+    return { icon: <Thermometer className="w-6 h-6" />, bg: 'bg-purple-50', iconColor: 'text-purple-500' };
+  if (c.includes('electr') || c.includes('digital'))
+    return { icon: <Zap className="w-6 h-6" />, bg: 'bg-yellow-50', iconColor: 'text-yellow-500' };
+  if (c.includes('drop') || c.includes('pour') || c.includes('dripper'))
+    return { icon: <Droplets className="w-6 h-6" />, bg: 'bg-teal-50', iconColor: 'text-teal-500' };
+  return { icon: <Star className="w-6 h-6" />, bg: 'bg-emerald-50', iconColor: 'text-emerald-500' };
+}
 
 export default function POS() {
   const queryClient = useQueryClient();
@@ -176,25 +193,42 @@ export default function POS() {
               <p>No se encontraron productos</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {products?.map(product => (
-                <div 
-                  key={product.id}
-                  onClick={() => addToCart(product)}
-                  className={`relative p-4 rounded-xl border bg-white cursor-pointer transition-all hover:border-primary hover:shadow-md ${product.stockQuantity <= 0 ? 'opacity-50 grayscale' : ''}`}
-                >
-                  <div className="font-medium line-clamp-2 leading-tight mb-2 h-10">{product.name}</div>
-                  <div className="flex items-end justify-between mt-auto">
-                    <div className="font-mono text-lg font-bold">{formatCOP(product.price)}</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
+              {products?.map(product => {
+                const { icon, bg, iconColor } = getCategoryStyle(product.category);
+                const outOfStock = product.stockQuantity <= 0;
+                return (
+                  <div
+                    key={product.id}
+                    onClick={() => addToCart(product)}
+                    className={`flex flex-col rounded-2xl border bg-white shadow-sm cursor-pointer transition-all duration-150 hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 overflow-hidden ${outOfStock ? 'opacity-50 grayscale pointer-events-none' : ''}`}
+                  >
+                    {/* Icon zone */}
+                    <div className={`${bg} flex items-center justify-center py-5 relative`}>
+                      <div className={`${iconColor}`}>{icon}</div>
+                      <span className={`absolute top-2 left-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/70 backdrop-blur-sm ${iconColor} border border-current/10`}>
+                        {product.category}
+                      </span>
+                    </div>
+
+                    {/* Content zone */}
+                    <div className="flex flex-col flex-1 p-3 gap-1.5">
+                      <p className="text-sm font-semibold text-slate-800 leading-snug line-clamp-2 min-h-[2.5rem]">
+                        {product.name}
+                      </p>
+
+                      <p className={`text-xs ${outOfStock ? 'text-destructive font-medium' : 'text-slate-400'} flex items-center gap-1`}>
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${outOfStock ? 'bg-destructive' : 'bg-emerald-400'}`} />
+                        {outOfStock ? 'Sin stock' : `${product.stockQuantity} en stock`}
+                      </p>
+
+                      <p className="mt-auto pt-1.5 border-t border-slate-100 font-mono font-bold text-emerald-700 text-base tracking-tight">
+                        {formatCOP(product.price)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-                    <Badge variant="outline" className="text-[10px] uppercase font-mono">{product.category}</Badge>
-                    <Badge variant={product.stockQuantity > 0 ? "secondary" : "destructive"} className="text-[10px]">
-                      {product.stockQuantity} en stock
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </ScrollArea>
