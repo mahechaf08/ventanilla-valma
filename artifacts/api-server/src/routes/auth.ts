@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 
 const router = Router();
 
@@ -13,10 +13,18 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
+  const identifier = String(username).trim();
+
+  // Allow login by username OR by email (e.g. "Fuego Verde" as alias)
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.username, String(username)));
+    .where(
+      or(
+        eq(usersTable.username, identifier),
+        eq(usersTable.email, identifier),
+      ),
+    );
 
   if (!user) {
     res.status(401).json({ error: "Credenciales inválidas" });

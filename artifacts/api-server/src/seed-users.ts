@@ -1,19 +1,22 @@
 import bcrypt from "bcryptjs";
 import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 export async function seedDefaultUsers(): Promise<void> {
-  const existing = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-  if (existing.length > 0) return;
+  // Always ensure the main administrator account exists.
+  const [existing] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.username, "Felipe Mahecha"));
 
-  const [adminHash, userHash] = await Promise.all([
-    bcrypt.hash("admin123", 10),
-    bcrypt.hash("empleado123", 10),
-  ]);
-
-  await db.insert(usersTable).values([
-    { username: "admin", passwordHash: adminHash, role: "admin" },
-    { username: "empleado", passwordHash: userHash, role: "user" },
-  ]);
-
-  console.log("✓ Usuarios por defecto creados: admin / empleado");
+  if (!existing) {
+    const passwordHash = await bcrypt.hash("05051997Fm08", 10);
+    await db.insert(usersTable).values({
+      username: "Felipe Mahecha",
+      email: "Fuego Verde",
+      passwordHash,
+      role: "admin",
+    });
+    console.log("✓ Administrador principal creado: Felipe Mahecha");
+  }
 }
