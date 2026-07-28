@@ -367,7 +367,7 @@ export default function POS() {
           {receiptSale && (
             <div className="py-6 px-4 bg-white border border-dashed border-slate-300 mx-auto w-full max-w-[320px] font-mono text-sm">
               <div className="text-center mb-6">
-                <h3 className="font-bold text-lg mb-1">VM-COFFEE</h3>
+                <h3 className="font-bold text-lg mb-1">Fuego Verde</h3>
                 <p className="text-muted-foreground text-xs">Recibo {receiptSale.invoiceNumber}</p>
                 <p className="text-muted-foreground text-xs">{new Date(receiptSale.createdAt).toLocaleString('es-CO')}</p>
               </div>

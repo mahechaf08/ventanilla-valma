@@ -136,7 +136,7 @@ export default function Sales() {
             <div className="py-6 px-4 bg-slate-50 border rounded-md font-mono text-sm">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h3 className="font-bold text-lg">VM-COFFEE</h3>
+                  <h3 className="font-bold text-lg">Fuego Verde</h3>
                   <p className="text-muted-foreground">Recibo {selectedSale.invoiceNumber}</p>
                 </div>
                 <div className="text-right text-muted-foreground text-xs">
