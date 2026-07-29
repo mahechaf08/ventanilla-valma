@@ -28,9 +28,17 @@ export const ListProductsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "sku": zod.string(),
+  "reference": zod.string().nullish(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "terminalPrice": zod.number().nullish(),
+  "cost": zod.number().nullish(),
+  "profitPercent": zod.number().nullish(),
   "category": zod.string(),
+  "suggestedStock": zod.number(),
+  "imagePath": zod.string().nullish(),
+  "suppliers": zod.string(),
+  "barcode": zod.string().nullish(),
   "stockQuantity": zod.number(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -45,24 +53,47 @@ export const ListProductsResponse = zod.array(ListProductsResponseItem)
 
 export const createProductBodyPriceMin = 0;
 
+export const createProductBodyTerminalPriceMin = 0;
+
+export const createProductBodyCostMin = 0;
+
+export const createProductBodyProfitPercentMin = 0;
+
+
+export const createProductBodySuggestedStockMin = 0;
 
 
 
 export const CreateProductBody = zod.object({
   "name": zod.string().min(1),
   "sku": zod.string().min(1),
+  "reference": zod.string().optional(),
   "description": zod.string().optional(),
   "price": zod.number().min(createProductBodyPriceMin),
-  "category": zod.string().min(1)
+  "terminalPrice": zod.number().min(createProductBodyTerminalPriceMin).optional(),
+  "cost": zod.number().min(createProductBodyCostMin).optional(),
+  "profitPercent": zod.number().min(createProductBodyProfitPercentMin).optional(),
+  "category": zod.string().min(1),
+  "suggestedStock": zod.number().min(createProductBodySuggestedStockMin).optional(),
+  "suppliers": zod.string().optional(),
+  "barcode": zod.string().optional()
 })
 
 export const CreateProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "sku": zod.string(),
+  "reference": zod.string().nullish(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "terminalPrice": zod.number().nullish(),
+  "cost": zod.number().nullish(),
+  "profitPercent": zod.number().nullish(),
   "category": zod.string(),
+  "suggestedStock": zod.number(),
+  "imagePath": zod.string().nullish(),
+  "suppliers": zod.string(),
+  "barcode": zod.string().nullish(),
   "stockQuantity": zod.number(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -80,9 +111,17 @@ export const GetProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "sku": zod.string(),
+  "reference": zod.string().nullish(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "terminalPrice": zod.number().nullish(),
+  "cost": zod.number().nullish(),
+  "profitPercent": zod.number().nullish(),
   "category": zod.string(),
+  "suggestedStock": zod.number(),
+  "imagePath": zod.string().nullish(),
+  "suppliers": zod.string(),
+  "barcode": zod.string().nullish(),
   "stockQuantity": zod.number(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -101,23 +140,40 @@ export const UpdateProductParams = zod.object({
 export const updateProductBodyPriceMin = 0;
 
 
+export const updateProductBodySuggestedStockMin = 0;
+
 
 
 export const UpdateProductBody = zod.object({
   "name": zod.string().min(1).optional(),
   "sku": zod.string().min(1).optional(),
+  "reference": zod.string().nullish(),
   "description": zod.string().nullish(),
   "price": zod.number().min(updateProductBodyPriceMin).optional(),
-  "category": zod.string().min(1).optional()
+  "terminalPrice": zod.number().nullish(),
+  "cost": zod.number().nullish(),
+  "profitPercent": zod.number().nullish(),
+  "category": zod.string().min(1).optional(),
+  "suggestedStock": zod.number().min(updateProductBodySuggestedStockMin).optional(),
+  "suppliers": zod.string().optional(),
+  "barcode": zod.string().nullish()
 })
 
 export const UpdateProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "sku": zod.string(),
+  "reference": zod.string().nullish(),
   "description": zod.string().nullish(),
   "price": zod.number(),
+  "terminalPrice": zod.number().nullish(),
+  "cost": zod.number().nullish(),
+  "profitPercent": zod.number().nullish(),
   "category": zod.string(),
+  "suggestedStock": zod.number(),
+  "imagePath": zod.string().nullish(),
+  "suppliers": zod.string(),
+  "barcode": zod.string().nullish(),
   "stockQuantity": zod.number(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

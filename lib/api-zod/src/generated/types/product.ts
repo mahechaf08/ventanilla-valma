@@ -11,9 +11,23 @@ export interface Product {
   name: string;
   sku: string;
   /** @nullable */
+  reference?: string | null;
+  /** @nullable */
   description?: string | null;
   price: number;
+  /** @nullable */
+  terminalPrice?: number | null;
+  /** @nullable */
+  cost?: number | null;
+  /** @nullable */
+  profitPercent?: number | null;
   category: string;
+  suggestedStock: number;
+  /** @nullable */
+  imagePath?: string | null;
+  suppliers: string;
+  /** @nullable */
+  barcode?: string | null;
   stockQuantity: number;
   createdAt: Date;
   updatedAt: Date;

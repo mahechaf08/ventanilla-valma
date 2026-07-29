@@ -2,6 +2,8 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import path from "path";
+import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { seedDefaultUsers } from "./seed-users";
@@ -16,16 +18,10 @@ app.use(
     logger,
     serializers: {
       req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
+        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
       },
       res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
+        return { statusCode: res.statusCode };
       },
     },
   }),
@@ -43,18 +39,27 @@ app.use(
     secret: process.env.SESSION_SECRET ?? "fallback-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
-    rolling: false,        // don't reset the clock on every request — keep the fixed 30-day window
+    rolling: false,
     cookie: {
       httpOnly: true,
-      secure: false,       // SSL is terminated at Replit proxy level
+      secure: false, // SSL is terminated at Replit proxy level
       maxAge: THIRTY_DAYS_MS,
       sameSite: "lax",
     },
   }),
 );
 
-// Seed default users (admin / empleado) if no users exist
+// Seed default users on startup
 seedDefaultUsers().catch((err) => logger.error(err, "Failed to seed users"));
+
+// Serve uploaded product and category images as static files
+const productsUploadDir = path.resolve(process.cwd(), "uploads", "products");
+const categoriesUploadDir = path.resolve(process.cwd(), "uploads", "categories");
+fs.mkdirSync(productsUploadDir, { recursive: true });
+fs.mkdirSync(categoriesUploadDir, { recursive: true });
+
+app.use("/api/product-images", express.static(productsUploadDir));
+app.use("/api/category-images", express.static(categoriesUploadDir));
 
 app.use("/api", router);
 

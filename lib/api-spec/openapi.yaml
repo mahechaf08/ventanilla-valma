@@ -343,7 +343,7 @@ components:
     # ── Product ──────────────────────────────────────────────────────────────
     Product:
       type: object
-      required: [id, name, sku, price, category, stockQuantity, createdAt, updatedAt]
+      required: [id, name, sku, price, category, stockQuantity, suggestedStock, suppliers, createdAt, updatedAt]
       properties:
         id:
           type: number
@@ -351,12 +351,28 @@ components:
           type: string
         sku:
           type: string
+        reference:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         price:
           type: number
+        terminalPrice:
+          type: ["number", "null"]
+        cost:
+          type: ["number", "null"]
+        profitPercent:
+          type: ["number", "null"]
         category:
           type: string
+        suggestedStock:
+          type: number
+        imagePath:
+          type: ["string", "null"]
+        suppliers:
+          type: string
+        barcode:
+          type: ["string", "null"]
         stockQuantity:
           type: number
         createdAt:
@@ -376,14 +392,32 @@ components:
         sku:
           type: string
           minLength: 1
+        reference:
+          type: string
         description:
           type: string
         price:
           type: number
           minimum: 0
+        terminalPrice:
+          type: number
+          minimum: 0
+        cost:
+          type: number
+          minimum: 0
+        profitPercent:
+          type: number
+          minimum: 0
         category:
           type: string
           minLength: 1
+        suggestedStock:
+          type: number
+          minimum: 0
+        suppliers:
+          type: string
+        barcode:
+          type: string
 
     ProductUpdate:
       type: object
@@ -394,14 +428,29 @@ components:
         sku:
           type: string
           minLength: 1
+        reference:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         price:
           type: number
           minimum: 0
+        terminalPrice:
+          type: ["number", "null"]
+        cost:
+          type: ["number", "null"]
+        profitPercent:
+          type: ["number", "null"]
         category:
           type: string
           minLength: 1
+        suggestedStock:
+          type: number
+          minimum: 0
+        suppliers:
+          type: string
+        barcode:
+          type: ["string", "null"]
 
     # ── Inventory ─────────────────────────────────────────────────────────────
     InventoryMovement:

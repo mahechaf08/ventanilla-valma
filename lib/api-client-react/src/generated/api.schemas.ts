@@ -14,9 +14,23 @@ export interface Product {
   name: string;
   sku: string;
   /** @nullable */
+  reference?: string | null;
+  /** @nullable */
   description?: string | null;
   price: number;
+  /** @nullable */
+  terminalPrice?: number | null;
+  /** @nullable */
+  cost?: number | null;
+  /** @nullable */
+  profitPercent?: number | null;
   category: string;
+  suggestedStock: number;
+  /** @nullable */
+  imagePath?: string | null;
+  suppliers: string;
+  /** @nullable */
+  barcode?: string | null;
   stockQuantity: number;
   createdAt: string;
   updatedAt: string;
@@ -27,11 +41,22 @@ export interface ProductInput {
   name: string;
   /** @minLength 1 */
   sku: string;
+  reference?: string;
   description?: string;
   /** @minimum 0 */
   price: number;
+  /** @minimum 0 */
+  terminalPrice?: number;
+  /** @minimum 0 */
+  cost?: number;
+  /** @minimum 0 */
+  profitPercent?: number;
   /** @minLength 1 */
   category: string;
+  /** @minimum 0 */
+  suggestedStock?: number;
+  suppliers?: string;
+  barcode?: string;
 }
 
 export interface ProductUpdate {
@@ -40,11 +65,24 @@ export interface ProductUpdate {
   /** @minLength 1 */
   sku?: string;
   /** @nullable */
+  reference?: string | null;
+  /** @nullable */
   description?: string | null;
   /** @minimum 0 */
   price?: number;
+  /** @nullable */
+  terminalPrice?: number | null;
+  /** @nullable */
+  cost?: number | null;
+  /** @nullable */
+  profitPercent?: number | null;
   /** @minLength 1 */
   category?: string;
+  /** @minimum 0 */
+  suggestedStock?: number;
+  suppliers?: string;
+  /** @nullable */
+  barcode?: string | null;
 }
 
 export type InventoryMovementType = typeof InventoryMovementType[keyof typeof InventoryMovementType];

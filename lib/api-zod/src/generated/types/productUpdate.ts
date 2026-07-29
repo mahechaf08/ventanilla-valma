@@ -12,9 +12,22 @@ export interface ProductUpdate {
   /** @minLength 1 */
   sku?: string;
   /** @nullable */
+  reference?: string | null;
+  /** @nullable */
   description?: string | null;
   /** @minimum 0 */
   price?: number;
+  /** @nullable */
+  terminalPrice?: number | null;
+  /** @nullable */
+  cost?: number | null;
+  /** @nullable */
+  profitPercent?: number | null;
   /** @minLength 1 */
   category?: string;
+  /** @minimum 0 */
+  suggestedStock?: number;
+  suppliers?: string;
+  /** @nullable */
+  barcode?: string | null;
 }

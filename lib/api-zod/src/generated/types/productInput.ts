@@ -11,9 +11,20 @@ export interface ProductInput {
   name: string;
   /** @minLength 1 */
   sku: string;
+  reference?: string;
   description?: string;
   /** @minimum 0 */
   price: number;
+  /** @minimum 0 */
+  terminalPrice?: number;
+  /** @minimum 0 */
+  cost?: number;
+  /** @minimum 0 */
+  profitPercent?: number;
   /** @minLength 1 */
   category: string;
+  /** @minimum 0 */
+  suggestedStock?: number;
+  suppliers?: string;
+  barcode?: string;
 }
