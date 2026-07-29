@@ -10,6 +10,23 @@ import { logger } from "./lib/logger";
 import { seedDefaultUsers } from "./seed-users";
 import { pool } from "@workspace/db";
 
+/**
+ * Create the connect-pg-simple session table manually.
+ * We cannot use createTableIfMissing:true because esbuild bundles the server
+ * and the table.sql file from the npm package is not copied into dist/.
+ */
+async function ensureSessionTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "user_sessions" (
+      "sid"    varchar      NOT NULL COLLATE "default",
+      "sess"   json         NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    ) WITH (OIDS=FALSE);
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
+  `);
+}
+
 const app: Express = express();
 
 // Trust Replit's reverse proxy so secure cookies and redirects work correctly
@@ -41,7 +58,9 @@ const PgSession = connectPgSimple(session);
 const sessionStore = new PgSession({
   pool,
   tableName: "user_sessions",
-  createTableIfMissing: true,
+  // createTableIfMissing is intentionally omitted — the table is created
+  // manually by ensureSessionTable() because esbuild does not copy the
+  // connect-pg-simple/table.sql asset into dist/, so that option throws ENOENT.
 });
 
 app.use(
@@ -60,8 +79,10 @@ app.use(
   }),
 );
 
-// Seed default users on startup
-seedDefaultUsers().catch((err) => logger.error(err, "Failed to seed users"));
+// Ensure session table exists, then seed default users
+ensureSessionTable()
+  .then(() => seedDefaultUsers())
+  .catch((err) => logger.error(err, "Startup initialization failed"));
 
 // Serve uploaded product and category images as static files
 const productsUploadDir = path.resolve(process.cwd(), "uploads", "products");

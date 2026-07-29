@@ -93,6 +93,7 @@ export default function Products() {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -115,10 +116,12 @@ export default function Products() {
     setImageFile(null);
     setImagePreview(null);
     setSupplierInput('');
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const handleOpenEdit = (product: Product) => {
+    setFormError(null);
     setEditingProduct(product);
     let parsedSuppliers: string[] = [];
     try { parsedSuppliers = JSON.parse(product.suppliers || '[]'); } catch {}
@@ -184,13 +187,15 @@ export default function Products() {
   };
 
   const handleSave = async () => {
+    setFormError(null);
+
     // ── Client-side validation ──────────────────────────────────────────────
-    if (!form.name.trim()) { toast.error('El nombre del producto es obligatorio'); return; }
-    if (!form.sku.trim()) { toast.error('El SKU es obligatorio'); return; }
-    if (!form.category.trim()) { toast.error('La categoría es obligatoria'); return; }
+    if (!form.name.trim()) { setFormError('El nombre del producto es obligatorio'); return; }
+    if (!form.sku.trim()) { setFormError('El SKU es obligatorio'); return; }
+    if (!form.category.trim()) { setFormError('La categoría es obligatoria'); return; }
     const priceVal = parseFloat(form.price);
     if (!form.price || isNaN(priceVal) || priceVal <= 0) {
-      toast.error('El precio de venta debe ser un número mayor a 0'); return;
+      setFormError('El precio de venta debe ser un número mayor a 0'); return;
     }
 
     // ── Build payload with strict number parsing ────────────────────────────
@@ -209,47 +214,64 @@ export default function Products() {
       barcode: form.barcode.trim() || undefined,
     };
 
-    console.log('[Products] Saving payload:', payload);
+    console.log('[Products] Sending product data:', payload);
 
-    if (editingProduct) {
-      updateProduct.mutate(
-        { id: editingProduct.id, data: payload },
-        {
-          onSuccess: async (updated) => {
-            console.log('[Products] Updated:', updated.id);
-            if (imageFile) await uploadImageForProduct(updated.id);
-            queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
-            setIsFormOpen(false);
-            toast.success('Producto actualizado correctamente');
-          },
-          onError: (err: any) => {
-            console.error('[Products] Update error:', err);
-            toast.error(err?.message || 'Error al actualizar el producto');
-          },
-        }
-      );
-    } else {
-      createProduct.mutate(
-        { data: payload },
-        {
-          onSuccess: async (created) => {
-            console.log('[Products] Created:', created.id);
-            if (imageFile) await uploadImageForProduct(created.id);
-            queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
-            setIsFormOpen(false);
-            setForm(emptyForm());
-            setImageFile(null);
-            setImagePreview(null);
-            toast.success('Producto creado correctamente');
-          },
-          onError: (err: any) => {
-            console.error('[Products] Create error:', err);
-            toast.error(err?.message || 'Error al crear el producto');
-          },
-        }
-      );
+    try {
+      if (editingProduct) {
+        await new Promise<void>((resolve, reject) => {
+          updateProduct.mutate(
+            { id: editingProduct.id, data: payload },
+            {
+              onSuccess: async (updated) => {
+                console.log('[Products] Updated:', updated.id);
+                if (imageFile) await uploadImageForProduct(updated.id);
+                queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+                queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
+                setIsFormOpen(false);
+                toast.success('Producto actualizado correctamente');
+                resolve();
+              },
+              onError: (err: any) => {
+                reject(err);
+              },
+            }
+          );
+        });
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          createProduct.mutate(
+            { data: payload },
+            {
+              onSuccess: async (created) => {
+                console.log('[Products] Created:', created.id);
+                if (imageFile) await uploadImageForProduct(created.id);
+                queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+                queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
+                setIsFormOpen(false);
+                setForm(emptyForm());
+                setImageFile(null);
+                setImagePreview(null);
+                toast.success('Producto creado correctamente');
+                resolve();
+              },
+              onError: (err: any) => {
+                reject(err);
+              },
+            }
+          );
+        });
+      }
+    } catch (err: any) {
+      console.error('[Products] Save error:', err);
+      // Extract the most useful message from the ApiError or plain Error
+      const serverMessage = err?.data?.error || err?.data?.message;
+      const statusCode = err?.status ? ` (${err.status})` : '';
+      const msg = serverMessage
+        ? `${serverMessage}${statusCode}`
+        : err?.message
+        ? `${err.message}${statusCode}`
+        : `Error inesperado al guardar el producto${statusCode}`;
+      setFormError(msg);
     }
   };
 
@@ -728,21 +750,29 @@ export default function Products() {
             </div>
           </div>
 
-          <SheetFooter className="px-6 py-4 border-t bg-slate-50 gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsFormOpen(false)}
-              disabled={isSaving}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={isSaving} className="min-w-32">
-              {isSaving
-                ? 'Guardando...'
-                : editingProduct
-                ? 'Guardar Cambios'
-                : 'Crear Producto'}
-            </Button>
+          <SheetFooter className="px-6 py-4 border-t bg-slate-50 flex-col gap-2">
+            {formError && (
+              <div className="w-full rounded-md bg-red-50 border border-red-200 px-4 py-2.5 flex items-start gap-2 text-sm text-red-700">
+                <span className="mt-0.5 shrink-0">⚠️</span>
+                <span>{formError}</span>
+              </div>
+            )}
+            <div className="flex w-full justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => { setIsFormOpen(false); setFormError(null); }}
+                disabled={isSaving}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving} className="min-w-32">
+                {isSaving
+                  ? 'Guardando...'
+                  : editingProduct
+                  ? 'Guardar Cambios'
+                  : 'Crear Producto'}
+              </Button>
+            </div>
           </SheetFooter>
         </SheetContent>
       </Sheet>
