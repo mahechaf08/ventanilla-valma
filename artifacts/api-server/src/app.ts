@@ -2,11 +2,13 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import path from "path";
 import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { seedDefaultUsers } from "./seed-users";
+import { pool } from "@workspace/db";
 
 const app: Express = express();
 
@@ -34,8 +36,17 @@ app.use(express.urlencoded({ extended: true }));
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Persistent PostgreSQL session store — survives server restarts
+const PgSession = connectPgSimple(session);
+const sessionStore = new PgSession({
+  pool,
+  tableName: "user_sessions",
+  createTableIfMissing: true,
+});
+
 app.use(
   session({
+    store: sessionStore,
     secret: process.env.SESSION_SECRET ?? "fallback-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
