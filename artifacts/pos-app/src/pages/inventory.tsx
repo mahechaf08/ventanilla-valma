@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   useListInventoryMovements, 
   useCreateInventoryMovement,
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -33,8 +33,8 @@ import { Textarea } from '@/components/ui/textarea';
 export default function Inventory() {
   const queryClient = useQueryClient();
   const { data: movements, isLoading: isLoadingMovements } = useListInventoryMovements({});
-  const { data: products } = useListProducts();
-  
+  const { data: products, isLoading: isLoadingProducts } = useListProducts();
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState({
     productId: '',
@@ -43,6 +43,62 @@ export default function Inventory() {
     reason: '',
     notes: ''
   });
+
+  // ── Product combobox state ─────────────────────────────────────────────────
+  const [productSearch, setProductSearch] = useState('');
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+  const [selectedProductLabel, setSelectedProductLabel] = useState('');
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+        productInputRef.current && !productInputRef.current.contains(e.target as Node)
+      ) {
+        setProductDropdownOpen(false);
+        // Restore label if user typed but didn't select
+        if (formData.productId) setProductSearch(selectedProductLabel);
+        else setProductSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [formData.productId, selectedProductLabel]);
+
+  const filteredProducts = (products ?? []).filter(p => {
+    const q = productSearch.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      (p.reference ?? '').toLowerCase().includes(q) ||
+      (p.barcode ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const handleSelectProduct = (p: { id: number; name: string; stockQuantity: number }) => {
+    const label = p.name;
+    setFormData(f => ({ ...f, productId: String(p.id) }));
+    setSelectedProductLabel(label);
+    setProductSearch(label);
+    setProductDropdownOpen(false);
+  };
+
+  const handleClearProduct = () => {
+    setFormData(f => ({ ...f, productId: '' }));
+    setSelectedProductLabel('');
+    setProductSearch('');
+    productInputRef.current?.focus();
+  };
+
+  const resetForm = () => {
+    setFormData({ productId: '', type: 'inbound', quantity: '1', reason: '', notes: '' });
+    setProductSearch('');
+    setSelectedProductLabel('');
+    setProductDropdownOpen(false);
+  };
 
   const createMovement = useCreateInventoryMovement();
 
@@ -69,9 +125,7 @@ export default function Inventory() {
     }, {
       onSuccess: () => {
         setIsFormOpen(false);
-        setFormData({
-          productId: '', type: 'inbound', quantity: '1', reason: '', notes: ''
-        });
+        resetForm();
         queryClient.invalidateQueries({ queryKey: getListInventoryMovementsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
@@ -181,18 +235,76 @@ export default function Inventory() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="product">Producto</Label>
-              <select 
-                id="product" 
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                value={formData.productId}
-                onChange={e => setFormData({...formData, productId: e.target.value})}
-              >
-                <option value="" disabled>Seleccionar un producto...</option>
-                {products?.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} (Stock: {p.stockQuantity})</option>
-                ))}
-              </select>
+              <Label htmlFor="product-search">Producto</Label>
+              <div className="relative">
+                {/* Input */}
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none z-10" />
+                <input
+                  ref={productInputRef}
+                  id="product-search"
+                  type="text"
+                  autoComplete="off"
+                  className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-8 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  placeholder={isLoadingProducts ? 'Cargando productos...' : 'Buscar por nombre, SKU o código...'}
+                  value={productSearch}
+                  onChange={e => {
+                    setProductSearch(e.target.value);
+                    setFormData(f => ({ ...f, productId: '' }));
+                    setSelectedProductLabel('');
+                    setProductDropdownOpen(true);
+                  }}
+                  onFocus={() => setProductDropdownOpen(true)}
+                />
+                {/* Clear button */}
+                {(productSearch || formData.productId) && (
+                  <button
+                    type="button"
+                    onClick={handleClearProduct}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Dropdown */}
+                {productDropdownOpen && (
+                  <div
+                    ref={dropdownRef}
+                    className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto"
+                  >
+                    {filteredProducts.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-center text-muted-foreground">
+                        {isLoadingProducts ? 'Cargando...' : 'No se encontraron productos'}
+                      </div>
+                    ) : (
+                      filteredProducts.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={() => handleSelectProduct(p)}
+                          className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors ${formData.productId === String(p.id) ? 'bg-blue-50 text-blue-700' : ''}`}
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{p.name}</span>
+                            <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>
+                          </div>
+                          <span className={`shrink-0 text-xs font-mono px-2 py-0.5 rounded-full ${p.stockQuantity <= 0 ? 'bg-red-100 text-red-700' : p.stockQuantity < 10 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                            {p.stockQuantity} en stock
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* Show selected product confirmation */}
+              {formData.productId && selectedProductLabel && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                  Seleccionado: <strong>{selectedProductLabel}</strong>
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
