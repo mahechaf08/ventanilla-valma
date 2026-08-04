@@ -13,7 +13,7 @@ export async function seedDefaultUsers(): Promise<void> {
     const passwordHash = await bcrypt.hash("05051997Fm08", 10);
     await db.insert(usersTable).values({
       username: "Felipe Mahecha",
-      email: "Fuego Verde",
+      email: "Ventanilla Valma",
       passwordHash,
       role: "admin",
     });

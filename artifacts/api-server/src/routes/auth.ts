@@ -15,7 +15,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   const identifier = String(username).trim();
 
-  // Allow login by username OR by email (e.g. "Fuego Verde" as alias)
+  // Allow login by username OR by email (e.g. "Ventanilla Valma" as alias)
   const [user] = await db
     .select()
     .from(usersTable)

@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Point of Sale"
+title = "Ventanilla Valma POS"
 version = "1.0.0"
 id = "artifacts/pos-app"
 router = "path"

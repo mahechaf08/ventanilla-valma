@@ -1,13 +1,12 @@
 import { useState } from 'react';
-import { useListSales } from '@workspace/api-client-react';
+import { useData } from '@/contexts/data-context';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { Eye, CreditCard, Banknote, User } from 'lucide-react';
 import {
   Dialog,
@@ -16,12 +15,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatCOP } from '@/lib/currency';
-
-const metodoPago: Record<string, string> = {
-  cash: 'Efectivo',
-  card: 'Tarjeta',
-  other: 'Otro',
-};
+import { formatPaymentSummary, paymentMethodLabel } from '@/lib/payments';
+import type { Sale } from '@/types';
 
 const estadoVenta: Record<string, string> = {
   completed: 'COMPLETADA',
@@ -29,11 +24,12 @@ const estadoVenta: Record<string, string> = {
 };
 
 export default function Sales() {
+  const { listSales } = useData();
   const [offset, setOffset] = useState(0);
   const limit = 50;
-  const { data: sales, isLoading } = useListSales({ limit, offset });
-  
-  const [selectedSale, setSelectedSale] = useState<any>(null);
+  const sales = listSales({ limit, offset });
+
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
   const getPaymentIcon = (method: string) => {
     switch(method) {
@@ -44,8 +40,8 @@ export default function Sales() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white">
-      <div className="p-6 border-b flex items-center justify-between bg-slate-50">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
+      <div className="px-6 py-5 border-b border-slate-200 bg-white flex-shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Historial de Ventas</h1>
           <p className="text-sm text-muted-foreground mt-1">Ver facturas y recibos anteriores.</p>
@@ -53,9 +49,9 @@ export default function Sales() {
       </div>
 
       <div className="p-6 flex-1 overflow-hidden flex flex-col">
-        <div className="border rounded-md flex-1 overflow-auto shadow-sm">
+        <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <Table>
-            <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
               <TableRow>
                 <TableHead>Factura #</TableHead>
                 <TableHead>Fecha</TableHead>
@@ -67,18 +63,14 @@ export default function Sales() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Cargando historial de ventas...</TableCell>
-                </TableRow>
-              ) : sales?.length === 0 ? (
+              {sales.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     No hay ventas registradas aún.
                   </TableCell>
                 </TableRow>
               ) : (
-                sales?.map((sale) => (
+                sales.map((sale) => (
                   <TableRow key={sale.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setSelectedSale(sale)}>
                     <TableCell className="font-mono font-medium">{sale.invoiceNumber}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -87,7 +79,7 @@ export default function Sales() {
                     <TableCell>{sale.customerName || <span className="text-muted-foreground italic">Cliente en tienda</span>}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-[10px] gap-1 px-2 py-0 h-5">
-                        {getPaymentIcon(sale.paymentMethod)} {metodoPago[sale.paymentMethod] ?? sale.paymentMethod}
+                        {getPaymentIcon(sale.paymentMethod)} {formatPaymentSummary(sale)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground font-mono">{sale.items.length}</TableCell>
@@ -104,21 +96,21 @@ export default function Sales() {
           </Table>
         </div>
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <div>Mostrando {sales?.length || 0} ventas</div>
+          <div>Mostrando {sales.length} ventas</div>
           <div className="space-x-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setOffset(o => Math.max(0, o - limit))}
               disabled={offset === 0}
             >
               Anterior
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setOffset(o => o + limit)}
-              disabled={!sales || sales.length < limit}
+              disabled={sales.length < limit}
             >
               Siguiente
             </Button>
@@ -126,17 +118,16 @@ export default function Sales() {
         </div>
       </div>
 
-      {/* Diálogo de Detalle de Factura */}
       <Dialog open={!!selectedSale} onOpenChange={(open) => !open && setSelectedSale(null)}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
             <DialogTitle>Detalle de Factura</DialogTitle>
           </DialogHeader>
           {selectedSale && (
-            <div className="py-6 px-4 bg-slate-50 border rounded-md font-mono text-sm">
+            <div className="py-6 px-4 bg-white border border-slate-200 rounded-xl shadow-sm font-mono text-sm">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h3 className="font-bold text-lg">Fuego Verde</h3>
+                  <h3 className="font-bold text-lg">Ventanilla Valma</h3>
                   <p className="text-muted-foreground">Recibo {selectedSale.invoiceNumber}</p>
                 </div>
                 <div className="text-right text-muted-foreground text-xs">
@@ -144,21 +135,21 @@ export default function Sales() {
                   {format(new Date(selectedSale.createdAt), 'h:mm a')}
                 </div>
               </div>
-              
+
               {selectedSale.customerName && (
                 <div className="mb-6 text-sm">
                   <span className="text-muted-foreground block text-xs">Cliente:</span>
                   <span className="font-sans font-medium">{selectedSale.customerName}</span>
                 </div>
               )}
-              
+
               <div className="space-y-3 mb-6">
                 <div className="grid grid-cols-12 text-xs font-bold text-muted-foreground pb-2 border-b">
                   <div className="col-span-5">ARTÍCULO</div>
                   <div className="col-span-4 text-right">CANT×PRECIO</div>
                   <div className="col-span-3 text-right">TOTAL</div>
                 </div>
-                {selectedSale.items.map((item: any) => (
+                {selectedSale.items.map((item) => (
                   <div key={item.id} className="grid grid-cols-12 items-start py-1">
                     <div className="col-span-5 font-sans text-sm">{item.productName}</div>
                     <div className="col-span-4 text-right text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCOP(item.unitPrice)}</div>
@@ -166,18 +157,40 @@ export default function Sales() {
                   </div>
                 ))}
               </div>
-              
+
               <div className="space-y-2 border-t pt-4">
                 <div className="flex justify-between font-bold text-base pt-2">
                   <span>Total</span>
                   <span className="text-primary">{formatCOP(selectedSale.total)}</span>
                 </div>
               </div>
-              
-              <div className="mt-8 text-center text-xs text-muted-foreground bg-white p-3 rounded border">
-                Estado: <span className="uppercase font-bold text-foreground">{estadoVenta[selectedSale.status] ?? selectedSale.status}</span>
-                <br />
-                Pagado con {metodoPago[selectedSale.paymentMethod] ?? selectedSale.paymentMethod}
+
+              <div className="mt-8 text-xs text-muted-foreground bg-white border border-slate-200 rounded-xl shadow-sm p-3 space-y-1">
+                <div>
+                  Estado:{' '}
+                  <span className="uppercase font-bold text-foreground">
+                    {estadoVenta[selectedSale.status] ?? selectedSale.status}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-100 space-y-1 text-slate-700">
+                  <div className="font-semibold text-slate-900">Pagos</div>
+                  {(selectedSale.payments && selectedSale.payments.length > 0
+                    ? selectedSale.payments
+                    : [{ method: selectedSale.paymentMethod, amount: selectedSale.total }]
+                  ).map((p, idx) => (
+                    <div key={`${p.method}-${idx}`} className="flex justify-between font-mono">
+                      <span>{paymentMethodLabel(p.method)}</span>
+                      <span>{formatCOP(p.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between font-mono font-semibold text-slate-900 pt-1">
+                    <span>Cambio</span>
+                    <span>{formatCOP(selectedSale.changeGiven ?? 0)}</span>
+                  </div>
+                </div>
+                <p className="mt-3 text-center text-slate-600">
+                  Gracias por su compra en Ventanilla Valma
+                </p>
               </div>
             </div>
           )}

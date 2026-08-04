@@ -1,17 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { 
-  useListInventoryMovements, 
-  useCreateInventoryMovement,
-  useListProducts,
-  getListInventoryMovementsQueryKey,
-  getListProductsQueryKey,
-  getGetDashboardSummaryQueryKey
-} from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useData } from '@/contexts/data-context';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,32 +18,29 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { InventoryMovementInputType } from '@workspace/api-client-react/src/generated/api.schemas';
+import type { InventoryMovementType } from '@/types';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 
 export default function Inventory() {
-  const queryClient = useQueryClient();
-  const { data: movements, isLoading: isLoadingMovements } = useListInventoryMovements({});
-  const { data: products, isLoading: isLoadingProducts } = useListProducts();
+  const { movements, products, createMovement } = useData();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     productId: '',
-    type: 'inbound' as InventoryMovementInputType,
+    type: 'inbound' as InventoryMovementType,
     quantity: '1',
     reason: '',
     notes: ''
   });
 
-  // ── Product combobox state ─────────────────────────────────────────────────
   const [productSearch, setProductSearch] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [selectedProductLabel, setSelectedProductLabel] = useState('');
   const productInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -59,7 +48,6 @@ export default function Inventory() {
         productInputRef.current && !productInputRef.current.contains(e.target as Node)
       ) {
         setProductDropdownOpen(false);
-        // Restore label if user typed but didn't select
         if (formData.productId) setProductSearch(selectedProductLabel);
         else setProductSearch('');
       }
@@ -68,7 +56,7 @@ export default function Inventory() {
     return () => document.removeEventListener('mousedown', handler);
   }, [formData.productId, selectedProductLabel]);
 
-  const filteredProducts = (products ?? []).filter(p => {
+  const filteredProducts = products.filter(p => {
     const q = productSearch.toLowerCase();
     return (
       p.name.toLowerCase().includes(q) ||
@@ -100,8 +88,6 @@ export default function Inventory() {
     setProductDropdownOpen(false);
   };
 
-  const createMovement = useCreateInventoryMovement();
-
   const handleSave = () => {
     if (!formData.productId || !formData.quantity) {
       toast.error('El producto y la cantidad son requeridos');
@@ -114,35 +100,31 @@ export default function Inventory() {
       return;
     }
 
-    createMovement.mutate({
-      data: {
+    setSaving(true);
+    try {
+      createMovement({
         productId: parseInt(formData.productId, 10),
         type: formData.type,
         quantity: qty,
         reason: formData.reason || undefined,
-        notes: formData.notes || undefined
-      }
-    }, {
-      onSuccess: () => {
-        setIsFormOpen(false);
-        resetForm();
-        queryClient.invalidateQueries({ queryKey: getListInventoryMovementsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-        toast.success('Movimiento de inventario registrado');
-      },
-      onError: (err: any) => {
-        toast.error(err.message || 'Error al registrar el movimiento');
-      }
-    });
+        notes: formData.notes || undefined,
+      });
+      setIsFormOpen(false);
+      resetForm();
+      toast.success('Movimiento de inventario registrado');
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al registrar el movimiento');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white">
-      <div className="p-6 border-b flex items-center justify-between bg-slate-50">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
+      <div className="px-6 py-5 border-b border-slate-200 bg-white flex-shrink-0 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Movimientos de Inventario</h1>
-          <p className="text-sm text-muted-foreground mt-1">Registra ajustes de stock y reposiciones a lo largo del tiempo.</p>
+          <p className="text-sm text-muted-foreground mt-1">Registra ajustes de cantidad y reposiciones a lo largo del tiempo.</p>
         </div>
         <Button onClick={() => setIsFormOpen(true)} className="gap-2">
           <Plus className="w-4 h-4" /> Registrar Movimiento
@@ -150,9 +132,9 @@ export default function Inventory() {
       </div>
 
       <div className="p-6 flex-1 overflow-hidden flex flex-col">
-        <div className="border rounded-md flex-1 overflow-auto shadow-sm">
+        <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <Table>
-            <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
               <TableRow>
                 <TableHead className="w-[180px]">Fecha</TableHead>
                 <TableHead>Tipo</TableHead>
@@ -162,18 +144,14 @@ export default function Inventory() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoadingMovements ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Cargando movimientos...</TableCell>
-                </TableRow>
-              ) : movements?.length === 0 ? (
+              {movements.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                     No hay movimientos de inventario registrados aún.
                   </TableCell>
                 </TableRow>
               ) : (
-                movements?.map((movement) => (
+                movements.map((movement) => (
                   <TableRow key={movement.id}>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap font-mono">
                       {format(new Date(movement.createdAt), "d MMM yyyy, h:mm a", { locale: es })}
@@ -212,9 +190,9 @@ export default function Inventory() {
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Tipo de Movimiento</Label>
-              <RadioGroup 
-                value={formData.type} 
-                onValueChange={(v) => setFormData({...formData, type: v as InventoryMovementInputType})} 
+              <RadioGroup
+                value={formData.type}
+                onValueChange={(v) => setFormData({...formData, type: v as InventoryMovementType})}
                 className="grid grid-cols-2 gap-2"
               >
                 <Label
@@ -222,14 +200,14 @@ export default function Inventory() {
                 >
                   <RadioGroupItem value="inbound" className="sr-only" />
                   <ArrowDownLeft className="h-4 w-4" />
-                  Entrada de Stock
+                  Entrada de Cantidad
                 </Label>
                 <Label
                   className={`flex items-center justify-center gap-2 rounded-md border-2 border-muted bg-transparent p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer ${formData.type === 'outbound' ? 'border-destructive bg-destructive/5 text-destructive' : ''}`}
                 >
                   <RadioGroupItem value="outbound" className="sr-only" />
                   <ArrowUpRight className="h-4 w-4" />
-                  Salida de Stock
+                  Salida de Cantidad
                 </Label>
               </RadioGroup>
             </div>
@@ -237,7 +215,6 @@ export default function Inventory() {
             <div className="space-y-2">
               <Label htmlFor="product-search">Producto</Label>
               <div className="relative">
-                {/* Input */}
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none z-10" />
                 <input
                   ref={productInputRef}
@@ -245,7 +222,7 @@ export default function Inventory() {
                   type="text"
                   autoComplete="off"
                   className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-8 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  placeholder={isLoadingProducts ? 'Cargando productos...' : 'Buscar por nombre, SKU o código...'}
+                  placeholder="Buscar por nombre, SKU o código..."
                   value={productSearch}
                   onChange={e => {
                     setProductSearch(e.target.value);
@@ -255,7 +232,6 @@ export default function Inventory() {
                   }}
                   onFocus={() => setProductDropdownOpen(true)}
                 />
-                {/* Clear button */}
                 {(productSearch || formData.productId) && (
                   <button
                     type="button"
@@ -267,15 +243,14 @@ export default function Inventory() {
                   </button>
                 )}
 
-                {/* Dropdown */}
                 {productDropdownOpen && (
                   <div
                     ref={dropdownRef}
-                    className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto"
+                    className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto"
                   >
                     {filteredProducts.length === 0 ? (
                       <div className="px-3 py-4 text-sm text-center text-muted-foreground">
-                        {isLoadingProducts ? 'Cargando...' : 'No se encontraron productos'}
+                        No se encontraron productos
                       </div>
                     ) : (
                       filteredProducts.map(p => (
@@ -283,14 +258,14 @@ export default function Inventory() {
                           key={p.id}
                           type="button"
                           onMouseDown={() => handleSelectProduct(p)}
-                          className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors ${formData.productId === String(p.id) ? 'bg-blue-50 text-blue-700' : ''}`}
+                          className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors ${formData.productId === String(p.id) ? 'bg-blue-50 text-blue-800' : ''}`}
                         >
                           <div className="flex flex-col min-w-0">
                             <span className="font-medium truncate">{p.name}</span>
                             <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>
                           </div>
-                          <span className={`shrink-0 text-xs font-mono px-2 py-0.5 rounded-full ${p.stockQuantity <= 0 ? 'bg-red-100 text-red-700' : p.stockQuantity < 10 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                            {p.stockQuantity} en stock
+                          <span className={`shrink-0 text-xs font-mono px-2 py-0.5 rounded-full ${p.stockQuantity <= 0 ? 'bg-red-100 text-red-700' : p.stockQuantity < 10 ? 'bg-amber-100 text-amber-800' : 'bg-amber-500 text-slate-900'}`}>
+                            {p.stockQuantity} uds
                           </span>
                         </button>
                       ))
@@ -298,10 +273,9 @@ export default function Inventory() {
                   </div>
                 )}
               </div>
-              {/* Show selected product confirmation */}
               {formData.productId && selectedProductLabel && (
-                <p className="text-xs text-emerald-600 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                <p className="text-xs text-blue-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
                   Seleccionado: <strong>{selectedProductLabel}</strong>
                 </p>
               )}
@@ -309,10 +283,10 @@ export default function Inventory() {
 
             <div className="space-y-2">
               <Label htmlFor="qty">Cantidad</Label>
-              <Input 
-                id="qty" 
-                type="number" 
-                min="1" 
+              <Input
+                id="qty"
+                type="number"
+                min="1"
                 className="font-mono"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
@@ -321,19 +295,19 @@ export default function Inventory() {
 
             <div className="space-y-2">
               <Label htmlFor="reason">Motivo (Opcional)</Label>
-              <Input 
-                id="reason" 
-                placeholder="ej. Entrega de proveedor, mercancía dañada..." 
+              <Input
+                id="reason"
+                placeholder="ej. Entrega de proveedor, mercancía dañada..."
                 value={formData.reason}
                 onChange={e => setFormData({...formData, reason: e.target.value})}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="notes">Notas Adicionales</Label>
-              <Textarea 
-                id="notes" 
-                placeholder="Números de referencia o detalles..." 
+              <Textarea
+                id="notes"
+                placeholder="Números de referencia o detalles..."
                 className="resize-none h-20"
                 value={formData.notes}
                 onChange={e => setFormData({...formData, notes: e.target.value})}
@@ -342,8 +316,8 @@ export default function Inventory() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={createMovement.isPending}>
-              {createMovement.isPending ? 'Guardando...' : 'Guardar Movimiento'}
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Guardando...' : 'Guardar Movimiento'}
             </Button>
           </DialogFooter>
         </DialogContent>

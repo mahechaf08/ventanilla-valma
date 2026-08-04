@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,92 +13,99 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { UserPlus, Trash2, UserCog, ShieldCheck, User, Users } from 'lucide-react';
+import { UserPlus, Trash2, UserCog, ShieldCheck, User, Users, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '@/contexts/auth-context';
+import type { Role, User as AppUser } from '@/types';
 
-interface AppUser {
-  id: number;
+type UserForm = {
   username: string;
-  role: 'admin' | 'user';
-  createdAt: string;
-}
+  password: string;
+  role: Role;
+};
 
-const apiBase = import.meta.env.BASE_URL.replace(/\/$/, '');
+const emptyForm = (): UserForm => ({
+  username: '',
+  password: '',
+  role: 'user',
+});
 
 export default function UsersPage() {
-  const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user: currentUser, listUsers, createUser, updateUser, deleteUser } = useAuth();
+  const users = listUsers();
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', role: 'user' as 'admin' | 'user' });
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [form, setForm] = useState<UserForm>(emptyForm());
   const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/api/users`, { credentials: 'include' });
-      if (res.ok) setUsers(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchUsers(); }, []);
-
   const openCreate = () => {
-    setForm({ username: '', password: '', role: 'user' });
-    setCreateOpen(true);
+    setEditingUser(null);
+    setForm(emptyForm());
+    setDialogOpen(true);
   };
 
-  const handleCreate = async () => {
-    if (!form.username || !form.password) {
+  const openEdit = (u: AppUser) => {
+    setEditingUser(u);
+    setForm({
+      username: u.username,
+      password: '',
+      role: u.role,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    if (!form.username.trim()) {
+      toast.error('El nombre de usuario es obligatorio');
+      return;
+    }
+    if (!editingUser && !form.password) {
       toast.error('Completa todos los campos');
       return;
     }
+
     setSaving(true);
     try {
-      const res = await fetch(`${apiBase}/api/users`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error || 'Error al crear usuario');
-        return;
+      if (editingUser) {
+        updateUser(editingUser.id, {
+          username: form.username.trim(),
+          role: form.role,
+          ...(form.password ? { password: form.password } : {}),
+        });
+        toast.success('Usuario actualizado');
+      } else {
+        createUser({
+          username: form.username.trim(),
+          password: form.password,
+          role: form.role,
+        });
+        toast.success('Usuario registrado exitosamente');
       }
-      toast.success('Usuario registrado exitosamente');
-      setCreateOpen(false);
-      fetchUsers();
+      setDialogOpen(false);
+      setEditingUser(null);
+      setForm(emptyForm());
+    } catch (err: any) {
+      toast.error(err?.message || (editingUser ? 'Error al actualizar usuario' : 'Error al crear usuario'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetch(`${apiBase}/api/users/${deleteTarget.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error || 'Error al eliminar usuario');
-        return;
-      }
+      deleteUser(deleteTarget.id);
       toast.success('Usuario eliminado');
       setDeleteTarget(null);
-      fetchUsers();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al eliminar usuario');
     } finally {
       setDeleting(false);
     }
@@ -108,9 +115,8 @@ export default function UsersPage() {
   const employees = users.filter(u => u.role === 'user');
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className="p-6 border-b bg-slate-50">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
+      <div className="px-6 py-5 border-b border-slate-200 bg-white flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -118,25 +124,23 @@ export default function UsersPage() {
               Gestión de Usuarios
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Administra los accesos al sistema Fuego Verde.
+              Crea, edita y elimina accesos al sistema Ventanilla Valma.
             </p>
           </div>
 
-          {/* Primary CTA */}
           <Button
             onClick={openCreate}
             size="lg"
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"
           >
             <UserPlus className="w-5 h-5" />
             Registrar nuevo usuario
           </Button>
         </div>
 
-        {/* Stats strip */}
         <div className="mt-4 flex gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
             <span>{admins.length} administrador{admins.length !== 1 ? 'es' : ''}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -146,26 +150,19 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="p-6 flex-1 overflow-hidden flex flex-col gap-4">
-        <div className="border rounded-lg flex-1 overflow-auto shadow-sm">
+        <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <Table>
-            <TableHeader className="bg-slate-50 sticky top-0 z-10">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
               <TableRow>
                 <TableHead>Usuario</TableHead>
                 <TableHead>Rol</TableHead>
                 <TableHead>Fecha de registro</TableHead>
-                <TableHead className="w-[80px]" />
+                <TableHead className="w-[100px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
-                    Cargando usuarios...
-                  </TableCell>
-                </TableRow>
-              ) : users.length === 0 ? (
+              {users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -182,20 +179,20 @@ export default function UsersPage() {
                   <TableRow key={u.id} className="group">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${u.role === 'admin' ? 'bg-emerald-600' : 'bg-slate-400'}`}>
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${u.role === 'admin' ? 'bg-blue-600' : 'bg-slate-400'}`}>
                           {u.username.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <div className="font-medium">{u.username}</div>
                           {currentUser?.id === u.id && (
-                            <div className="text-xs text-emerald-600 font-medium">sesión activa</div>
+                            <div className="text-xs text-blue-600 font-medium">sesión activa</div>
                           )}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       {u.role === 'admin' ? (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1 font-medium">
+                        <Badge className="bg-amber-500 text-slate-900 border-0 gap-1 font-medium">
                           <ShieldCheck className="w-3 h-3" /> Administrador
                         </Badge>
                       ) : (
@@ -208,16 +205,28 @@ export default function UsersPage() {
                       {format(new Date(u.createdAt), "d 'de' MMMM yyyy, h:mm a", { locale: es })}
                     </TableCell>
                     <TableCell>
-                      {currentUser?.id !== u.id && (
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => setDeleteTarget(u)}
+                          className="h-8 w-8"
+                          onClick={() => openEdit(u)}
+                          title="Editar usuario"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Edit2 className="w-4 h-4" />
                         </Button>
-                      )}
+                        {currentUser?.id !== u.id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => setDeleteTarget(u)}
+                            title="Eliminar usuario"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -226,50 +235,65 @@ export default function UsersPage() {
           </Table>
         </div>
 
-        {/* Inline quick-register card */}
         <div
-          className="border-2 border-dashed border-emerald-200 rounded-lg p-4 flex items-center justify-between bg-emerald-50/50 cursor-pointer hover:bg-emerald-50 hover:border-emerald-300 transition-colors"
+          className="border-2 border-dashed border-blue-200 rounded-lg p-4 flex items-center justify-between bg-blue-50/50 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors"
           onClick={openCreate}
         >
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
-              <UserPlus className="w-5 h-5 text-emerald-600" />
+            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <UserPlus className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-emerald-800">Registrar nuevo usuario</p>
-              <p className="text-xs text-emerald-600">Añade un cajero o administrador al sistema</p>
+              <p className="text-sm font-medium text-blue-800">Registrar nuevo usuario</p>
+              <p className="text-xs text-blue-600">Añade un cajero o administrador al sistema</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-100">
+          <Button variant="outline" size="sm" className="gap-1 border-blue-300 text-blue-700 hover:bg-blue-100">
             <UserPlus className="w-4 h-4" /> Registrar
           </Button>
         </div>
       </div>
 
-      {/* Register User Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) {
+          setEditingUser(null);
+          setForm(emptyForm());
+        }
+      }}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-emerald-600" />
-              Registrar nuevo usuario
+              {editingUser ? (
+                <>
+                  <Edit2 className="w-5 h-5 text-blue-600" />
+                  Editar usuario
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-5 h-5 text-blue-600" />
+                  Registrar nuevo usuario
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="new-username">Nombre de usuario *</Label>
+              <Label htmlFor="user-username">Nombre de usuario *</Label>
               <Input
-                id="new-username"
+                id="user-username"
                 value={form.username}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                placeholder="ej: maria.garcia"
+                placeholder="ej: Maria Garcia"
                 autoComplete="off"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-password">Contraseña *</Label>
+              <Label htmlFor="user-password">
+                Contraseña {editingUser ? '(dejar en blanco para no cambiar)' : '*'}
+              </Label>
               <Input
-                id="new-password"
+                id="user-password"
                 type="password"
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
@@ -291,34 +315,37 @@ export default function UsersPage() {
                 <button
                   type="button"
                   onClick={() => setForm(f => ({ ...f, role: 'admin' }))}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors text-sm font-medium ${form.role === 'admin' ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-muted text-muted-foreground hover:border-emerald-400'}`}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors text-sm font-medium ${form.role === 'admin' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-muted text-muted-foreground hover:border-blue-400'}`}
                 >
                   <ShieldCheck className="w-5 h-5" />
                   Administrador
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground bg-slate-50 rounded p-2">
+              <p className="text-xs text-muted-foreground bg-slate-50 border border-slate-200 rounded-lg rounded-xl p-2">
                 {form.role === 'admin'
-                  ? '⚙️ Acceso completo: ventas, inventario, productos y usuarios.'
-                  : '🛒 Solo acceso al Punto de Venta para procesar ventas.'}
+                  ? 'Acceso completo: ventas, inventario, productos y usuarios.'
+                  : 'Solo acceso al Punto de Venta para procesar ventas.'}
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button
-              onClick={handleCreate}
+              onClick={handleSave}
               disabled={saving}
-              className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+              className="bg-blue-600 hover:bg-blue-700 gap-2"
             >
-              <UserPlus className="w-4 h-4" />
-              {saving ? 'Registrando...' : 'Registrar usuario'}
+              {editingUser ? <Edit2 className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+              {saving
+                ? 'Guardando...'
+                : editingUser
+                  ? 'Guardar cambios'
+                  : 'Registrar usuario'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

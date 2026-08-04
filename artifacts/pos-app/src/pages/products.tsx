@@ -1,15 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import {
-  useListProducts,
-  useCreateProduct,
-  useUpdateProduct,
-  useDeleteProduct,
-  useListCategories,
-  getListProductsQueryKey,
-  getListCategoriesQueryKey,
-} from '@workspace/api-client-react';
-import type { Product } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useData } from '@/contexts/data-context';
+import type { Product } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -28,7 +19,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { formatCOP } from '@/lib/currency';
 
-const apiBase = import.meta.env.BASE_URL.replace(/\/$/, '');
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    reader.readAsDataURL(file);
+  });
+}
 
 // ── Form state ─────────────────────────────────────────────────────────────────
 interface FormState {
@@ -41,7 +39,7 @@ interface FormState {
   profitPercent: string;
   price: string;
   terminalPrice: string;
-  suggestedStock: string;
+  stockQuantity: string;
   suppliers: string[];
   barcode: string;
 }
@@ -49,7 +47,7 @@ interface FormState {
 const emptyForm = (): FormState => ({
   name: '', sku: '', reference: '', description: '', category: '',
   cost: '', profitPercent: '', price: '', terminalPrice: '',
-  suggestedStock: '0', suppliers: [], barcode: '',
+  stockQuantity: '0', suppliers: [], barcode: '',
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -57,11 +55,12 @@ function autoSku(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, '-').slice(0, 12);
 }
 
-function calcPrice(cost: string, profit: string): string {
+function calcProfitPercent(cost: string, price: string): string {
   const c = parseFloat(cost);
-  const p = parseFloat(profit);
+  const p = parseFloat(price);
   if (isNaN(c) || isNaN(p) || c <= 0) return '';
-  return Math.round(c * (1 + p / 100)).toString();
+  const pct = ((p - c) / c) * 100;
+  return (Math.round(pct * 100) / 100).toString();
 }
 
 function parseNum(s: string): number | undefined {
@@ -76,10 +75,16 @@ function parseInt10(s: string): number {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Products() {
-  const queryClient = useQueryClient();
+  const {
+    listProducts,
+    listCategories,
+    createProduct,
+    updateProduct,
+    deleteProduct,
+  } = useData();
   const [search, setSearch] = useState('');
-  const { data: products, isLoading } = useListProducts({ search });
-  const { data: existingCategories } = useListCategories();
+  const products = listProducts({ search });
+  const existingCategories = listCategories();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -88,24 +93,19 @@ export default function Products() {
   const [supplierInput, setSupplierInput] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const createProduct = useCreateProduct();
-  const updateProduct = useUpdateProduct();
-  const deleteProduct = useDeleteProduct();
-
-  // auto-calc price when cost or profit changes
+  // auto-calc % ganancia from cost + sale price (no upper limit)
   useEffect(() => {
-    if (form.cost && form.profitPercent) {
-      const suggested = calcPrice(form.cost, form.profitPercent);
-      if (suggested) setForm(f => ({ ...f, price: suggested }));
-    }
-  }, [form.cost, form.profitPercent]);
+    const next = calcProfitPercent(form.cost, form.price);
+    setForm((f) => (f.profitPercent === next ? f : { ...f, profitPercent: next }));
+  }, [form.cost, form.price]);
 
   const set = (key: keyof FormState, value: string) =>
     setForm(f => ({ ...f, [key]: value }));
@@ -135,7 +135,7 @@ export default function Products() {
       profitPercent: product.profitPercent != null ? String(product.profitPercent) : '',
       price: String(product.price),
       terminalPrice: product.terminalPrice != null ? String(product.terminalPrice) : '',
-      suggestedStock: String(product.suggestedStock ?? 0),
+      stockQuantity: String(product.stockQuantity ?? 0),
       suppliers: parsedSuppliers,
       barcode: product.barcode || '',
     });
@@ -166,30 +166,9 @@ export default function Products() {
   const handleRemoveSupplier = (s: string) =>
     setForm(f => ({ ...f, suppliers: f.suppliers.filter(x => x !== s) }));
 
-  const uploadImageForProduct = async (productId: number) => {
-    if (!imageFile) return;
-    setUploadingImage(true);
-    try {
-      const fd = new FormData();
-      fd.append('image', imageFile);
-      const res = await fetch(`${apiBase}/api/products/${productId}/image`, {
-        method: 'POST', credentials: 'include', body: fd,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        toast.error(`Imagen: ${body.error || 'Error al subir'}`);
-      }
-    } catch (err: any) {
-      toast.error(`Imagen: ${err?.message || 'Error de red'}`);
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
   const handleSave = async () => {
     setFormError(null);
 
-    // ── Client-side validation ──────────────────────────────────────────────
     if (!form.name.trim()) { setFormError('El nombre del producto es obligatorio'); return; }
     if (!form.sku.trim()) { setFormError('El SKU es obligatorio'); return; }
     if (!form.category.trim()) { setFormError('La categoría es obligatoria'); return; }
@@ -198,110 +177,82 @@ export default function Products() {
       setFormError('El precio de venta debe ser un número mayor a 0'); return;
     }
 
-    // ── Build payload with strict number parsing ────────────────────────────
-    const payload = {
-      name: form.name.trim(),
-      sku: form.sku.trim().toUpperCase(),
-      reference: form.reference.trim() || undefined,
-      description: form.description.trim() || undefined,
-      category: form.category.trim(),
-      cost: parseNum(form.cost),
-      profitPercent: parseNum(form.profitPercent),
-      price: priceVal,
-      terminalPrice: parseNum(form.terminalPrice),
-      suggestedStock: parseInt10(form.suggestedStock),
-      suppliers: JSON.stringify(form.suppliers),
-      barcode: form.barcode.trim() || undefined,
-    };
+    // Commit any pending supplier text typed but not yet added via Enter/+
+    const pendingSupplier = supplierInput.trim();
+    const suppliersList = [...form.suppliers];
+    if (pendingSupplier && !suppliersList.includes(pendingSupplier)) {
+      suppliersList.push(pendingSupplier);
+    }
 
-    console.log('[Products] Sending product data:', payload);
+    const stockQuantity = Math.max(0, Math.trunc(Number(form.stockQuantity) || 0));
 
+    setIsSaving(true);
     try {
-      if (editingProduct) {
-        await new Promise<void>((resolve, reject) => {
-          updateProduct.mutate(
-            { id: editingProduct.id, data: payload },
-            {
-              onSuccess: async (updated) => {
-                console.log('[Products] Updated:', updated.id);
-                if (imageFile) await uploadImageForProduct(updated.id);
-                queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-                queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
-                setIsFormOpen(false);
-                toast.success('Producto actualizado correctamente');
-                resolve();
-              },
-              onError: (err: any) => {
-                reject(err);
-              },
-            }
-          );
-        });
-      } else {
-        await new Promise<void>((resolve, reject) => {
-          createProduct.mutate(
-            { data: payload },
-            {
-              onSuccess: async (created) => {
-                console.log('[Products] Created:', created.id);
-                if (imageFile) await uploadImageForProduct(created.id);
-                queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-                queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
-                setIsFormOpen(false);
-                setForm(emptyForm());
-                setImageFile(null);
-                setImagePreview(null);
-                toast.success('Producto creado correctamente');
-                resolve();
-              },
-              onError: (err: any) => {
-                reject(err);
-              },
-            }
-          );
-        });
+      let imagePath: string | null | undefined = undefined;
+      if (imageFile) {
+        imagePath = await fileToDataUrl(imageFile);
+      } else if (!imagePreview && editingProduct) {
+        imagePath = null;
       }
+
+      const payload = {
+        name: form.name.trim(),
+        sku: form.sku.trim().toUpperCase(),
+        reference: form.reference.trim() || null,
+        description: form.description.trim() || null,
+        category: form.category.trim(),
+        cost: parseNum(form.cost) ?? null,
+        profitPercent: parseNum(form.profitPercent) ?? null,
+        price: priceVal,
+        terminalPrice: parseNum(form.terminalPrice) ?? null,
+        suggestedStock: editingProduct?.suggestedStock ?? 0,
+        stockQuantity,
+        suppliers: JSON.stringify(suppliersList),
+        barcode: form.barcode.trim() || null,
+        ...(imagePath !== undefined ? { imagePath } : {}),
+      };
+
+      if (editingProduct) {
+        updateProduct(editingProduct.id, payload);
+      } else {
+        createProduct(payload);
+      }
+
+      setIsFormOpen(false);
+      setForm(emptyForm());
+      setSupplierInput('');
+      setImageFile(null);
+      setImagePreview(null);
+      toast.success(editingProduct ? 'Producto actualizado correctamente' : 'Producto creado correctamente');
     } catch (err: any) {
-      console.error('[Products] Save error:', err);
-      // Extract the most useful message from the ApiError or plain Error
-      const serverMessage = err?.data?.error || err?.data?.message;
-      const statusCode = err?.status ? ` (${err.status})` : '';
-      const msg = serverMessage
-        ? `${serverMessage}${statusCode}`
-        : err?.message
-        ? `${err.message}${statusCode}`
-        : `Error inesperado al guardar el producto${statusCode}`;
-      setFormError(msg);
+      setFormError(err?.message || 'Error inesperado al guardar el producto');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = () => {
     if (!productToDelete) return;
-    deleteProduct.mutate(
-      { id: productToDelete.id },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-          setDeleteConfirmOpen(false);
-          setProductToDelete(null);
-          toast.success('Producto eliminado');
-        },
-        onError: (err: any) => {
-          toast.error(err?.message || 'Error al eliminar el producto');
-        },
-      }
-    );
+    setIsDeleting(true);
+    try {
+      deleteProduct(productToDelete.id);
+      setDeleteConfirmOpen(false);
+      setProductToDelete(null);
+      toast.success('Producto eliminado');
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al eliminar el producto');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  const isSaving = createProduct.isPending || updateProduct.isPending || uploadingImage;
-
   return (
-    <div className="flex-1 flex flex-col h-full bg-white">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
       {/* Header */}
-      <div className="p-6 border-b flex items-center justify-between bg-slate-50">
+      <div className="px-6 py-5 border-b border-slate-200 bg-white flex-shrink-0 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Catálogo de Productos</h1>
-          <p className="text-sm text-muted-foreground mt-1">Administra artículos, precios y detalles.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Productos</h1>
+          <p className="text-sm text-muted-foreground mt-1">Administra artículos, precios, cantidad e inventario.</p>
         </div>
         <Button onClick={handleOpenNew} className="gap-2">
           <Plus className="w-4 h-4" /> Agregar Producto
@@ -322,9 +273,9 @@ export default function Products() {
           </div>
         </div>
 
-        <div className="border rounded-md flex-1 overflow-auto bg-white shadow-sm">
+        <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <Table>
-            <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
               <TableRow>
                 <TableHead className="w-10"></TableHead>
                 <TableHead>SKU</TableHead>
@@ -332,18 +283,12 @@ export default function Products() {
                 <TableHead>Categoría</TableHead>
                 <TableHead className="text-right">Costo</TableHead>
                 <TableHead className="text-right">Precio</TableHead>
-                <TableHead className="text-right">Stock</TableHead>
+                <TableHead className="text-right">Cantidad</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    Cargando productos...
-                  </TableCell>
-                </TableRow>
-              ) : !products?.length ? (
+              {!products.length ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                     No se encontraron productos. Agrega uno para comenzar.
@@ -381,9 +326,9 @@ export default function Products() {
                       variant={product.stockQuantity <= 0 ? 'destructive' : 'default'}
                       className={
                         product.stockQuantity > 9
-                          ? 'bg-emerald-100 text-emerald-800 border-0'
+                          ? 'bg-amber-500 text-slate-900 border-0'
                           : product.stockQuantity > 0
-                          ? 'bg-amber-100 text-amber-800 border-0'
+                          ? 'bg-amber-100 text-amber-900 border-0'
                           : ''
                       }
                     >
@@ -416,7 +361,7 @@ export default function Products() {
       {/* ── Product Form Sheet ── */}
       <Sheet open={isFormOpen} onOpenChange={open => { if (!isSaving) setIsFormOpen(open); }}>
         <SheetContent className="w-full sm:max-w-2xl flex flex-col border-l p-0">
-          <SheetHeader className="px-6 py-4 border-b bg-slate-50">
+          <SheetHeader className="px-6 py-4 border-b border-slate-200 bg-white">
             <SheetTitle className="flex items-center gap-2">
               <PackagePlus className="w-5 h-5 text-primary" />
               {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
@@ -491,8 +436,8 @@ export default function Products() {
                       autoComplete="off"
                     />
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                    {categoryOpen && existingCategories && existingCategories.length > 0 && (
-                      <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border rounded-md shadow-lg max-h-44 overflow-auto">
+                    {categoryOpen && existingCategories.length > 0 && (
+                      <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-lg max-h-44 overflow-auto">
                         {existingCategories
                           .filter(c => !form.category || c.toLowerCase().includes(form.category.toLowerCase()))
                           .map(c => (
@@ -547,7 +492,6 @@ export default function Products() {
                 Precios y Costos
               </p>
               <div className="grid gap-4">
-                {/* Cost + Profit */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="p-cost">Costo (COP)</Label>
@@ -563,38 +507,6 @@ export default function Products() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="p-profit">% Ganancia</Label>
-                    <div className="relative">
-                      <Input
-                        id="p-profit"
-                        type="number"
-                        step="1"
-                        min="0"
-                        max="999"
-                        value={form.profitPercent}
-                        onChange={e => set('profitPercent', e.target.value)}
-                        placeholder="ej: 40"
-                        className="font-mono pr-8"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {form.cost && form.profitPercent && (
-                  <p className="text-xs text-emerald-600 bg-emerald-50 rounded px-3 py-2">
-                    💡 Precio sugerido calculado automáticamente:{' '}
-                    <strong>
-                      {formatCOP(parseFloat(calcPrice(form.cost, form.profitPercent) || '0'))}
-                    </strong>
-                  </p>
-                )}
-
-                {/* Price + Terminal Price */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
                     <Label htmlFor="p-price">
                       Precio de Venta (COP) <span className="text-destructive">*</span>
                     </Label>
@@ -605,10 +517,13 @@ export default function Products() {
                       min="0"
                       value={form.price}
                       onChange={e => set('price', e.target.value)}
-                      placeholder="ej: 120000"
+                      placeholder="ej: 2000"
                       className="font-mono font-medium"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="p-terminal">Precio Terminal (COP)</Label>
                     <Input
@@ -618,9 +533,28 @@ export default function Products() {
                       min="0"
                       value={form.terminalPrice}
                       onChange={e => set('terminalPrice', e.target.value)}
-                      placeholder="ej: 115000"
+                      placeholder="ej: 1800"
                       className="font-mono"
                     />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p-profit">% Ganancia</Label>
+                    <div className="relative">
+                      <Input
+                        id="p-profit"
+                        type="number"
+                        step="0.01"
+                        value={form.profitPercent}
+                        readOnly
+                        tabIndex={-1}
+                        placeholder="Auto"
+                        className="font-mono pr-8 bg-slate-50 text-slate-700"
+                        title="Calculado automáticamente: ((Precio de Venta − Costo) / Costo) × 100"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        %
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -634,20 +568,17 @@ export default function Products() {
                 Inventario
               </p>
               <div className="space-y-1.5 max-w-xs">
-                <Label htmlFor="p-stock">Stock Sugerido</Label>
+                <Label htmlFor="p-stock">Cantidad</Label>
                 <Input
                   id="p-stock"
                   type="number"
                   step="1"
                   min="0"
-                  value={form.suggestedStock}
-                  onChange={e => set('suggestedStock', e.target.value)}
+                  value={form.stockQuantity}
+                  onChange={e => set('stockQuantity', e.target.value)}
                   placeholder="0"
                   className="font-mono"
                 />
-                <p className="text-xs text-muted-foreground">
-                  El stock real se ajusta desde la página de Inventario.
-                </p>
               </div>
             </div>
 
@@ -740,7 +671,7 @@ export default function Products() {
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
-                  className="w-full border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center gap-2 text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50/50 transition-colors"
+                  className="w-full border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center gap-2 text-muted-foreground hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/50 transition-colors"
                 >
                   <ImagePlus className="w-8 h-8 opacity-50" />
                   <span className="text-sm font-medium">Haz clic para subir una imagen</span>
@@ -750,7 +681,7 @@ export default function Products() {
             </div>
           </div>
 
-          <SheetFooter className="px-6 py-4 border-t bg-slate-50 flex-col gap-2">
+          <SheetFooter className="px-6 py-4 border-t border-slate-200 bg-white flex-col gap-2">
             {formError && (
               <div className="w-full rounded-md bg-red-50 border border-red-200 px-4 py-2.5 flex items-start gap-2 text-sm text-red-700">
                 <span className="mt-0.5 shrink-0">⚠️</span>
@@ -793,7 +724,7 @@ export default function Products() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteProduct.isPending ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
