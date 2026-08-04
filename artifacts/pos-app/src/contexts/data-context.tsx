@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -15,6 +16,17 @@ import {
 } from '@/lib/storage';
 import { dateKeyMatches, isSameLocalDay } from '@/lib/date';
 import { normalizePayments, saleCashAmount, saleNonCashAmount } from '@/lib/payments';
+import {
+  connectRealtime,
+  getDeviceId,
+  publishCashClose,
+  publishInventory,
+  publishSale,
+  RealtimeEvents,
+  type CashCloseRealtimePayload,
+  type InventoryRealtimePayload,
+  type SaleRealtimePayload,
+} from '@/lib/realtime';
 import type {
   CashClose,
   CashCloseStatus,
@@ -545,6 +557,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         sale: saleId + 1,
         saleItem: saleItemId,
       });
+      publishSale({
+        sale,
+        products: input.skipStockDeduction ? undefined : working,
+      });
       return sale;
     },
     [products, sales, nextIds, persistProducts, persistSales, persistIds],
@@ -603,6 +619,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       persistProducts(updatedProducts);
       persistMovements([movement, ...readMovements()]);
       persistIds({ ...ids, movement: ids.movement + 1 });
+      publishInventory({ movement, products: updatedProducts });
       return movement;
     },
     [readProducts, readMovements, readNextIds, persistProducts, persistMovements, persistIds],
@@ -1108,6 +1125,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         persistCashCloses([record, ...cashCloses]);
         persistIds({ ...ids, cashClose: ids.cashClose + 1 });
       }
+      publishCashClose({ cashClose: record });
       return record;
     },
     [cashCloses, nextIds, getCashClosePreview, persistCashCloses, persistIds],
@@ -1401,6 +1419,106 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       listPurchaseOrders,
     ],
   );
+
+  // Real-time sync across terminals via Socket.IO
+  useEffect(() => {
+    const deviceId = getDeviceId();
+    const sock = connectRealtime();
+    if (!sock) return;
+
+    const onSale = (payload: SaleRealtimePayload | { source?: string; sale?: Sale }) => {
+      const remote = payload as SaleRealtimePayload;
+      if (remote.deviceId && remote.deviceId === deviceId) return;
+      const sale = remote.sale;
+      if (!sale?.invoiceNumber) return;
+
+      setSales((prev) => {
+        if (prev.some((s) => s.invoiceNumber === sale.invoiceNumber || s.id === sale.id)) {
+          return prev;
+        }
+        const next = [sale, ...prev];
+        save(KEYS.sales, next);
+        return next;
+      });
+
+      if (remote.products?.length) {
+        persistProducts(remote.products);
+      } else if (sale.items?.length) {
+        const current = load<Product[]>(KEYS.products, products);
+        const next = current.map((p) => {
+          const line = sale.items.find((i) => i.productId === p.id);
+          if (!line) return p;
+          return {
+            ...p,
+            stockQuantity: Math.max(0, p.stockQuantity - line.quantity),
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        persistProducts(next);
+      }
+    };
+
+    const onInventory = (
+      payload: InventoryRealtimePayload | { source?: string; movement?: InventoryMovement },
+    ) => {
+      const remote = payload as InventoryRealtimePayload;
+      if (remote.deviceId && remote.deviceId === deviceId) return;
+      const movement = remote.movement;
+      if (!movement) return;
+
+      setMovements((prev) => {
+        if (prev.some((m) => m.id === movement.id && m.createdAt === movement.createdAt)) {
+          return prev;
+        }
+        const next = [movement, ...prev];
+        save(KEYS.movements, next);
+        return next;
+      });
+
+      if (remote.products?.length) {
+        persistProducts(remote.products);
+      } else {
+        const current = load<Product[]>(KEYS.products, products);
+        const pIdx = current.findIndex((p) => p.id === movement.productId);
+        if (pIdx >= 0) {
+          const p = current[pIdx];
+          const delta = movement.type === 'inbound' ? movement.quantity : -movement.quantity;
+          const next = [...current];
+          next[pIdx] = {
+            ...p,
+            stockQuantity: Math.max(0, p.stockQuantity + delta),
+            updatedAt: new Date().toISOString(),
+          };
+          persistProducts(next);
+        }
+      }
+    };
+
+    const onCash = (payload: CashCloseRealtimePayload) => {
+      if (payload.deviceId && payload.deviceId === deviceId) return;
+      const record = payload.cashClose;
+      if (!record?.dateKey) return;
+      setCashCloses((prev) => {
+        const idx = prev.findIndex((c) => c.dateKey === record.dateKey);
+        const next =
+          idx >= 0
+            ? prev.map((c, i) => (i === idx ? record : c))
+            : [record, ...prev];
+        save(KEYS.cashCloses, next);
+        return next;
+      });
+    };
+
+    sock.on(RealtimeEvents.SALE_CREATED, onSale);
+    sock.on(RealtimeEvents.INVENTORY_UPDATED, onInventory);
+    sock.on(RealtimeEvents.CASH_CLOSED, onCash);
+
+    return () => {
+      sock.off(RealtimeEvents.SALE_CREATED, onSale);
+      sock.off(RealtimeEvents.INVENTORY_UPDATED, onInventory);
+      sock.off(RealtimeEvents.CASH_CLOSED, onCash);
+    };
+  }, [persistProducts, products]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

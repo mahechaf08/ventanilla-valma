@@ -191,7 +191,7 @@ router.post("/sales", async (req, res): Promise<void> => {
     }))
   );
 
-  res.status(201).json({
+  const responseBody = {
     ...sale,
     subtotal: Number(sale.subtotal),
     tax: Number(sale.tax),
@@ -201,7 +201,18 @@ router.post("/sales", async (req, res): Promise<void> => {
       unitPrice: Number(i.unitPrice),
       subtotal: Number(i.subtotal),
     })),
+  };
+
+  const { emitInventoryUpdated, emitSaleCreated } = await import("../realtime");
+  emitSaleCreated({ source: "api", sale: responseBody });
+  emitInventoryUpdated({
+    source: "api",
+    reason: "sale",
+    productIds: items.map((i) => i.productId),
+    invoiceNumber,
   });
+
+  res.status(201).json(responseBody);
 });
 
 router.get("/sales/:id", async (req, res): Promise<void> => {

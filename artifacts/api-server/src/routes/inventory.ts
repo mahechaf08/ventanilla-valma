@@ -80,7 +80,11 @@ router.post("/inventory", async (req, res): Promise<void> => {
     .values(parsed.data)
     .returning();
 
-  res.status(201).json({ ...movement, productName: product.name });
+  const payload = { ...movement, productName: product.name };
+  const { emitInventoryUpdated } = await import("../realtime");
+  emitInventoryUpdated({ source: "api", movement: payload });
+
+  res.status(201).json(payload);
 });
 
 router.get("/inventory/stock", async (req, res): Promise<void> => {
