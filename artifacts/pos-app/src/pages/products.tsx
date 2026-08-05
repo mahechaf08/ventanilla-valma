@@ -17,7 +17,15 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { formatCOP } from '@/lib/currency';
+import { cn } from '@/lib/utils';
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -58,9 +66,19 @@ function autoSku(name: string): string {
 function calcProfitPercent(cost: string, price: string): string {
   const c = parseFloat(cost);
   const p = parseFloat(price);
-  if (isNaN(c) || isNaN(p) || c <= 0) return '';
-  const pct = ((p - c) / c) * 100;
+  if (isNaN(c) || isNaN(p) || p <= 0) return '';
+  // Margen sobre venta: ((precio − costo) / precio) × 100
+  const pct = ((p - c) / p) * 100;
   return (Math.round(pct * 100) / 100).toString();
+}
+
+/** Precio = Costo / (1 − margen%/100) */
+function calcPriceFromMargin(cost: string, profitPercent: string): string {
+  const c = parseFloat(cost);
+  const m = parseFloat(profitPercent);
+  if (isNaN(c) || isNaN(m) || c < 0 || m >= 100) return '';
+  const price = c / (1 - m / 100);
+  return String(Math.round(price));
 }
 
 function parseNum(s: string): number | undefined {
@@ -81,10 +99,12 @@ export default function Products() {
     createProduct,
     updateProduct,
     deleteProduct,
+    listSupplierNames,
   } = useData();
   const [search, setSearch] = useState('');
   const products = listProducts({ search });
   const existingCategories = listCategories();
+  const knownSuppliers = listSupplierNames();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -96,19 +116,45 @@ export default function Products() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  /** When user edits % ganancia, price is derived; otherwise % follows price/cost. */
+  const [pricingDrive, setPricingDrive] = useState<'price' | 'margin'>('price');
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // auto-calc % ganancia from cost + sale price (no upper limit)
+  // Keep cost / price / % ganancia in sync (margen sobre venta)
   useEffect(() => {
+    if (pricingDrive === 'margin') {
+      if (!form.cost || !form.profitPercent) return;
+      const nextPrice = calcPriceFromMargin(form.cost, form.profitPercent);
+      if (nextPrice && nextPrice !== form.price) {
+        setForm((f) => ({ ...f, price: nextPrice }));
+      }
+      return;
+    }
+    if (!form.cost || !form.price) return;
     const next = calcProfitPercent(form.cost, form.price);
     setForm((f) => (f.profitPercent === next ? f : { ...f, profitPercent: next }));
-  }, [form.cost, form.price]);
+  }, [form.cost, form.price, form.profitPercent, pricingDrive]);
 
   const set = (key: keyof FormState, value: string) =>
     setForm(f => ({ ...f, [key]: value }));
+
+  const handleCostChange = (value: string) => {
+    set('cost', value);
+    // Keep current drive: if margin-driven, effect will refresh price; else refresh %
+  };
+
+  const handlePriceChange = (value: string) => {
+    setPricingDrive('price');
+    set('price', value);
+  };
+
+  const handleProfitChange = (value: string) => {
+    setPricingDrive('margin');
+    set('profitPercent', value);
+  };
 
   const handleOpenNew = () => {
     setEditingProduct(null);
@@ -116,6 +162,7 @@ export default function Products() {
     setImageFile(null);
     setImagePreview(null);
     setSupplierInput('');
+    setPricingDrive('price');
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -123,6 +170,7 @@ export default function Products() {
   const handleOpenEdit = (product: Product) => {
     setFormError(null);
     setEditingProduct(product);
+    setPricingDrive('price');
     let parsedSuppliers: string[] = [];
     try { parsedSuppliers = JSON.parse(product.suppliers || '[]'); } catch {}
     setForm({
@@ -501,8 +549,8 @@ export default function Products() {
                       step="100"
                       min="0"
                       value={form.cost}
-                      onChange={e => set('cost', e.target.value)}
-                      placeholder="ej: 80000"
+                      onChange={e => handleCostChange(e.target.value)}
+                      placeholder="ej: 30000"
                       className="font-mono"
                     />
                   </div>
@@ -516,8 +564,8 @@ export default function Products() {
                       step="100"
                       min="0"
                       value={form.price}
-                      onChange={e => set('price', e.target.value)}
-                      placeholder="ej: 2000"
+                      onChange={e => handlePriceChange(e.target.value)}
+                      placeholder="ej: 50000"
                       className="font-mono font-medium"
                     />
                   </div>
@@ -538,23 +586,26 @@ export default function Products() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="p-profit">% Ganancia</Label>
+                    <Label htmlFor="p-profit">% Ganancia (margen sobre venta)</Label>
                     <div className="relative">
                       <Input
                         id="p-profit"
                         type="number"
                         step="0.01"
+                        max="99.99"
                         value={form.profitPercent}
-                        readOnly
-                        tabIndex={-1}
-                        placeholder="Auto"
-                        className="font-mono pr-8 bg-slate-50 text-slate-700"
-                        title="Calculado automáticamente: ((Precio de Venta − Costo) / Costo) × 100"
+                        onChange={e => handleProfitChange(e.target.value)}
+                        placeholder="ej: 40"
+                        className="font-mono pr-8"
+                        title="Margen sobre venta: ((Precio − Costo) / Precio) × 100. Si editas el %, el precio se recalcula."
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                         %
                       </span>
                     </div>
+                    <p className="text-[11px] text-slate-500">
+                      Edita el precio o el %: el otro se ajusta. Fórmula: (Venta − Costo) / Venta × 100.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -587,9 +638,42 @@ export default function Products() {
             {/* ── Proveedores ── */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Proveedor(es)
+                Proveedor
+              </p>
+              <p className="text-xs text-slate-500 mb-3">
+                Asigna el proveedor del producto. Sus ventas e inventarios se atribuyen a ese
+                proveedor en <span className="font-medium">Ganancia por Proveedor</span>.
               </p>
               <div className="space-y-3">
+                {knownSuppliers.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label>Seleccionar proveedor existente</Label>
+                    <Select
+                      onValueChange={(name) => {
+                        if (!name) return;
+                        if (form.suppliers.includes(name)) {
+                          toast.error('Este proveedor ya está agregado');
+                          return;
+                        }
+                        // Primary supplier first
+                        setForm((f) => ({ ...f, suppliers: [name, ...f.suppliers] }));
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Elegir de la lista..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {knownSuppliers
+                          .filter((s) => !form.suppliers.includes(s))
+                          .map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <Input
                     value={supplierInput}
@@ -597,7 +681,7 @@ export default function Products() {
                     onKeyDown={e => {
                       if (e.key === 'Enter') { e.preventDefault(); handleAddSupplier(); }
                     }}
-                    placeholder="Nombre del proveedor..."
+                    placeholder="O escribe un proveedor nuevo..."
                     className="flex-1"
                   />
                   <Button type="button" variant="outline" onClick={handleAddSupplier} className="shrink-0">
@@ -606,20 +690,24 @@ export default function Products() {
                 </div>
                 {form.suppliers.length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {form.suppliers.map(s => (
-                      <span
+                    {form.suppliers.map((s, idx) => (
+                      <Badge
                         key={s}
-                        className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm"
+                        variant="secondary"
+                        className={cn(
+                          'gap-1.5 pr-1',
+                          idx === 0 && 'bg-blue-50 text-blue-800 border border-blue-200',
+                        )}
                       >
-                        {s}
+                        {idx === 0 ? `${s} · principal` : s}
                         <button
                           type="button"
+                          className="rounded-sm p-0.5 hover:bg-slate-200/80"
                           onClick={() => handleRemoveSupplier(s)}
-                          className="hover:text-destructive transition-colors"
                         >
                           <X className="w-3 h-3" />
                         </button>
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 )}

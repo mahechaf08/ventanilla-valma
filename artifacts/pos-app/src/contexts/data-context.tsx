@@ -221,9 +221,9 @@ function weightedAverageCost(
   return Math.round((stock * cost + purchasedQty * purchaseCost) / totalUnits);
 }
 
-function profitFromCost(price: number, cost: number | null): number | null {
-  if (cost == null || cost <= 0) return null;
-  return Math.round(((price - cost) / cost) * 10000) / 100;
+function profitFromPrice(price: number, cost: number | null): number | null {
+  if (cost == null || price <= 0) return null;
+  return Math.round(((price - cost) / price) * 10000) / 100;
 }
 
 interface DataContextType {
@@ -1671,13 +1671,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const previousCost = product.cost ?? null;
         const newStock = previousStock + qty;
         const newCost = weightedAverageCost(previousStock, previousCost, qty, unitCost);
-        const newProfit = profitFromCost(product.price, newCost);
+        const newProfit = profitFromPrice(product.price, newCost);
+        const tagged = parseProductSuppliers(product.suppliers);
+        const alreadyLinked = tagged.some(
+          (s) => normalizeSupplierKey(s) === normalizeSupplierKey(supplierName),
+        );
+        const nextSuppliers = alreadyLinked
+          ? tagged
+          : [supplierName, ...tagged];
 
         working[pIdx] = {
           ...product,
           stockQuantity: newStock,
           cost: newCost,
           profitPercent: newProfit,
+          suppliers: JSON.stringify(nextSuppliers),
           updatedAt: new Date().toISOString(),
         };
 

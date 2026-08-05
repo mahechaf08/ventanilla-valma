@@ -14,11 +14,10 @@ import {
   Users,
   Warehouse,
   ChartColumn,
-  PackagePlus,
+  BadgeDollarSign,
   Undo2,
   PackageOpen,
   Truck,
-  BadgeDollarSign,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
@@ -37,7 +36,6 @@ const inventoryGroupPaths = [
   '/products',
   '/inventory',
   '/product-control',
-  '/purchase-orders',
   '/ganancia-proveedor',
 ];
 const returnsGroupPaths = ['/devoluciones/cliente', '/devoluciones/proveedor'];
@@ -84,7 +82,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/products', label: 'Productos', icon: Package },
     { href: '/inventory', label: 'Movimientos de Inventario', icon: ArrowRightLeft },
     { href: '/product-control', label: 'Control de Productos', icon: ChartColumn },
-    { href: '/purchase-orders', label: 'Cargas de Inventario', icon: PackagePlus },
     { href: '/ganancia-proveedor', label: 'Ganancia por Proveedor', icon: BadgeDollarSign },
   ];
 
