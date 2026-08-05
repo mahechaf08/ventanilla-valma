@@ -7,7 +7,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "seed:users": "tsx ../../scripts/run-seed-users.mts"
   },
   "dependencies": {
     "@types/connect-pg-simple": "^7.0.3",

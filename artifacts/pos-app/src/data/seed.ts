@@ -3,7 +3,7 @@ import type { Product, User } from '@/types';
 const now = new Date().toISOString();
 
 /** Bump when default users change so localStorage picks up the new seed. */
-export const USERS_SEED_VERSION = 2;
+export const USERS_SEED_VERSION = 3;
 
 export const SEED_USERS: User[] = [
   {
@@ -18,6 +18,20 @@ export const SEED_USERS: User[] = [
     username: 'cajero',
     password: 'cajero123',
     role: 'user',
+    createdAt: now,
+  },
+  {
+    id: 3,
+    username: 'Darney',
+    password: 'Valma2026',
+    role: 'admin',
+    createdAt: now,
+  },
+  {
+    id: 4,
+    username: 'Martha',
+    password: 'Valma2026',
+    role: 'admin',
     createdAt: now,
   },
 ];

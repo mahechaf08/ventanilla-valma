@@ -74,7 +74,7 @@ export interface NextIds {
 }
 
 export const DEFAULT_NEXT_IDS: NextIds = {
-  user: 3,
+  user: 5,
   product: 100,
   sale: 1,
   saleItem: 1,
