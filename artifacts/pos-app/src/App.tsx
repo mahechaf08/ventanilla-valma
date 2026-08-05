@@ -8,6 +8,7 @@ import Products from './pages/products';
 import Inventory from './pages/inventory';
 import ProductControl from './pages/product-control';
 import PurchaseOrders from './pages/purchase-orders';
+import SupplierReturns from './pages/supplier-returns';
 import Sales from './pages/sales';
 import Users from './pages/users';
 import RegisterConsumption from './pages/register-consumption';
@@ -58,6 +59,7 @@ function Router() {
         <Route path="/inventory" component={Inventory} />
         <Route path="/product-control" component={ProductControl} />
         <Route path="/purchase-orders" component={PurchaseOrders} />
+        <Route path="/supplier-returns" component={SupplierReturns} />
         <Route path="/sales" component={Sales} />
         <Route path="/consumo" component={RegisterConsumption} />
         <Route path="/consumo-empleados" component={EmployeeConsumptionAdmin} />

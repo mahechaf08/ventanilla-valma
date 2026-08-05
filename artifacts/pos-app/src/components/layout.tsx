@@ -15,6 +15,7 @@ import {
   Warehouse,
   ChartColumn,
   PackagePlus,
+  Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
@@ -29,7 +30,13 @@ type NavItem = {
 };
 
 const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados'];
-const inventoryGroupPaths = ['/products', '/inventory', '/product-control', '/purchase-orders'];
+const inventoryGroupPaths = [
+  '/products',
+  '/inventory',
+  '/product-control',
+  '/purchase-orders',
+  '/supplier-returns',
+];
 
 /** High-contrast accent for icons on deep blue sidebar */
 const iconAccent = 'text-cyan-400';
@@ -65,6 +72,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/inventory', label: 'Movimientos de Inventario', icon: ArrowRightLeft },
     { href: '/product-control', label: 'Control de Productos', icon: ChartColumn },
     { href: '/purchase-orders', label: 'Cargas de Inventario', icon: PackagePlus },
+    { href: '/supplier-returns', label: 'Devoluciones a Proveedores', icon: Undo2 },
   ];
 
   const usersSubItems: NavItem[] = [

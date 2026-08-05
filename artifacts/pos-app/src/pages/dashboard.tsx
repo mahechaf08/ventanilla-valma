@@ -551,12 +551,33 @@ function CierreCajaTab() {
               </div>
               <p className="text-[11px] text-slate-400 mt-1">Tarjeta, transferencias y otros</p>
             </div>
-            {preview.cashOuts > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
-                <div className="text-sm text-amber-800 mb-1">Salidas de caja del día</div>
-                <div className="text-xl font-mono font-bold text-amber-900">
-                  −{formatCOP(preview.cashOuts)}
+            {preview.supplierCashRefunds > 0 && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="text-sm text-blue-800 mb-1">Reembolsos de proveedores</div>
+                <div className="text-xl font-mono font-bold text-blue-900">
+                  +{formatCOP(preview.supplierCashRefunds)}
                 </div>
+                <p className="text-[11px] text-blue-700/80 mt-1">Efectivo recibido por devoluciones</p>
+              </div>
+            )}
+            {preview.customerRefunds > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="text-sm text-amber-800 mb-1">Devoluciones a clientes</div>
+                <div className="text-xl font-mono font-bold text-amber-900">
+                  −{formatCOP(preview.customerRefunds)}
+                </div>
+                <p className="text-[11px] text-amber-800/80 mt-1">Reembolsos en efectivo</p>
+              </div>
+            )}
+            {preview.cashExpenses > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
+                <div className="text-sm text-amber-800 mb-1">Otros egresos de caja</div>
+                <div className="text-xl font-mono font-bold text-amber-900">
+                  −{formatCOP(preview.cashExpenses)}
+                </div>
+                <p className="text-[11px] text-amber-800/80 mt-1">
+                  Pagos a proveedores y otras salidas
+                </p>
               </div>
             )}
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 sm:col-span-2">
@@ -566,7 +587,9 @@ function CierreCajaTab() {
               </div>
               <p className="text-[11px] text-blue-700/80 mt-1">
                 Fondo inicial + ventas en efectivo
-                {preview.cashOuts > 0 ? ' − salidas de caja' : ''}
+                {preview.supplierCashRefunds > 0 ? ' + reembolsos proveedores' : ''}
+                {preview.customerRefunds > 0 ? ' − devoluciones clientes' : ''}
+                {preview.cashExpenses > 0 ? ' − otros egresos' : ''}
               </p>
             </div>
           </div>

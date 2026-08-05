@@ -8,9 +8,17 @@ export type PaymentMethod =
   | 'transfer'
   | 'other';
 
-export type SaleStatus = 'completed' | 'voided';
+export type SaleStatus = 'completed' | 'voided' | 'partially_returned' | 'returned';
 
 export type InventoryMovementType = 'inbound' | 'outbound';
+
+export type CustomerReturnReason =
+  | 'defective'
+  | 'exchange'
+  | 'customer_request'
+  | 'other';
+
+export type SupplierReturnSettlement = 'cash_refund' | 'store_credit';
 
 export interface User {
   id: number;
@@ -64,6 +72,8 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  /** Units already returned (cumulative). */
+  returnedQuantity?: number;
 }
 
 export interface SalePayment {
@@ -87,6 +97,8 @@ export interface Sale {
   cashier?: string;
   items: SaleItem[];
   source?: 'pos' | 'employee_consumption';
+  /** Cumulative cash/value refunded via customer returns. */
+  returnedTotal?: number;
 }
 
 export interface InventoryMovement {
@@ -148,7 +160,7 @@ export interface CashMovement {
   reason: string;
   employeeId: number;
   employeeName: string;
-  referenceType?: 'supplier_invoice' | null;
+  referenceType?: 'supplier_invoice' | 'customer_return' | 'supplier_return' | null;
   referenceId?: number | null;
   createdAt: string;
 }
@@ -193,6 +205,13 @@ export interface CashClose {
   openingFloat: number;
   cashSales: number;
   otherSales: number;
+  /** Cash refunds received from suppliers (drawer in). */
+  supplierCashRefunds: number;
+  /** Cash refunded to customers (drawer out). */
+  customerRefunds: number;
+  /** Other cash outs (e.g. supplier invoice payments). */
+  cashExpenses: number;
+  /** Total cash outs = customerRefunds + cashExpenses (legacy field). */
   cashOuts: number;
   expectedCash: number;
   countedCash: number;
@@ -278,6 +297,61 @@ export interface PurchaseOrder {
   totalAmount: number;
   itemCount: number;
   items: PurchaseOrderItem[];
+  createdBy: string;
+  createdByUserId: number;
+  createdAt: string;
+}
+
+export interface CustomerReturnItem {
+  saleItemId: number;
+  productId: number;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface CustomerReturn {
+  id: number;
+  saleId: number;
+  invoiceNumber: string;
+  reason: CustomerReturnReason;
+  reasonNotes?: string | null;
+  items: CustomerReturnItem[];
+  refundTotal: number;
+  /** Portion refunded in cash (hits cash drawer). */
+  refundCashAmount: number;
+  refundMethod: PaymentMethod;
+  processedBy: string;
+  processedByUserId: number;
+  cashMovementId?: number | null;
+  movementIds: number[];
+  createdAt: string;
+}
+
+export interface SupplierReturnItem {
+  productId: number;
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitCost: number;
+  lineTotal: number;
+  previousStock: number;
+  newStock: number;
+}
+
+export interface SupplierReturn {
+  id: number;
+  supplierName: string;
+  supplierNit?: string | null;
+  referenceNumber?: string | null;
+  settlement: SupplierReturnSettlement;
+  notes?: string | null;
+  items: SupplierReturnItem[];
+  totalAmount: number;
+  itemCount: number;
+  cashMovementId?: number | null;
+  movementIds: number[];
   createdBy: string;
   createdByUserId: number;
   createdAt: string;

@@ -33,6 +33,8 @@ export const KEYS = {
   supplierInvoices: `${PREFIX}supplier_invoices`,
   cashCloses: `${PREFIX}cash_closes`,
   purchaseOrders: `${PREFIX}purchase_orders`,
+  customerReturns: `${PREFIX}customer_returns`,
+  supplierReturns: `${PREFIX}supplier_returns`,
   session: `${PREFIX}session`,
   nextIds: `${PREFIX}next_ids`,
 } as const;
@@ -67,6 +69,8 @@ export interface NextIds {
   supplierInvoice: number;
   cashClose: number;
   purchaseOrder: number;
+  customerReturn: number;
+  supplierReturn: number;
 }
 
 export const DEFAULT_NEXT_IDS: NextIds = {
@@ -80,4 +84,6 @@ export const DEFAULT_NEXT_IDS: NextIds = {
   supplierInvoice: 1,
   cashClose: 1,
   purchaseOrder: 1,
+  customerReturn: 1,
+  supplierReturn: 1,
 };

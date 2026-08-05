@@ -31,6 +31,9 @@ import type {
   CashClose,
   CashCloseStatus,
   CashMovement,
+  CustomerReturn,
+  CustomerReturnItem,
+  CustomerReturnReason,
   DashboardSummary,
   EmployeeConsumption,
   EmployeeConsumptionSummary,
@@ -53,6 +56,9 @@ import type {
   SupplierAccountSummary,
   SupplierInvoicePayment,
   SupplierInvoiceStockItem,
+  SupplierReturn,
+  SupplierReturnItem,
+  SupplierReturnSettlement,
 } from '@/types';
 
 function ensureProducts(): Product[] {
@@ -156,6 +162,29 @@ interface CreatePurchaseOrderInput {
   items: { productId: number; quantity: number; unitCost: number }[];
 }
 
+interface CreateCustomerReturnInput {
+  saleId: number;
+  reason: CustomerReturnReason;
+  reasonNotes?: string;
+  /** Quantity to return per sale line item id */
+  items: { saleItemId: number; quantity: number }[];
+  /** How the customer is refunded; cash hits the drawer. */
+  refundMethod: PaymentMethod;
+  processedBy: string;
+  processedByUserId: number;
+}
+
+interface CreateSupplierReturnInput {
+  supplierName: string;
+  supplierNit?: string;
+  referenceNumber?: string;
+  settlement: SupplierReturnSettlement;
+  notes?: string;
+  createdBy: string;
+  createdByUserId: number;
+  items: { productId: number; quantity: number; unitCost: number }[];
+}
+
 /** Weighted average cost: ((stock * cost) + (qty * purchaseCost)) / (stock + qty) */
 function weightedAverageCost(
   currentStock: number,
@@ -185,6 +214,8 @@ interface DataContextType {
   supplierInvoices: SupplierInvoicePayment[];
   cashCloses: CashClose[];
   purchaseOrders: PurchaseOrder[];
+  customerReturns: CustomerReturn[];
+  supplierReturns: SupplierReturn[];
   listProducts: (opts?: { search?: string; category?: string }) => Product[];
   listCategories: () => string[];
   createProduct: (input: ProductInput) => Product;
@@ -209,6 +240,9 @@ interface DataContextType {
   getCashClosePreview: (dateKey: string, openingFloat: number) => {
     cashSales: number;
     otherSales: number;
+    supplierCashRefunds: number;
+    customerRefunds: number;
+    cashExpenses: number;
     cashOuts: number;
     expectedCash: number;
   };
@@ -218,6 +252,10 @@ interface DataContextType {
   getIncomeAnalytics: (fromKey: string, toKey: string) => IncomeAnalytics;
   createPurchaseOrder: (input: CreatePurchaseOrderInput) => PurchaseOrder;
   listPurchaseOrders: () => PurchaseOrder[];
+  createCustomerReturn: (input: CreateCustomerReturnInput) => CustomerReturn;
+  listCustomerReturns: (saleId?: number) => CustomerReturn[];
+  createSupplierReturn: (input: CreateSupplierReturnInput) => SupplierReturn;
+  listSupplierReturns: () => SupplierReturn[];
 }
 
 export interface LiquidatedConsumptionBatch {
@@ -251,6 +289,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [cashCloses, setCashCloses] = useState<CashClose[]>(() => load(KEYS.cashCloses, []));
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() =>
     load(KEYS.purchaseOrders, []),
+  );
+  const [customerReturns, setCustomerReturns] = useState<CustomerReturn[]>(() =>
+    load(KEYS.customerReturns, []),
+  );
+  const [supplierReturns, setSupplierReturns] = useState<SupplierReturn[]>(() =>
+    load(KEYS.supplierReturns, []),
   );
   const [nextIds, setNextIds] = useState<NextIds>(() => ensureNextIds());
 
@@ -310,6 +354,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const persistPurchaseOrders = useCallback((next: PurchaseOrder[]) => {
     setPurchaseOrders(next);
     save(KEYS.purchaseOrders, next);
+  }, []);
+
+  const persistCustomerReturns = useCallback((next: CustomerReturn[]) => {
+    setCustomerReturns(next);
+    save(KEYS.customerReturns, next);
+  }, []);
+
+  const persistSupplierReturns = useCallback((next: SupplierReturn[]) => {
+    setSupplierReturns(next);
+    save(KEYS.supplierReturns, next);
   }, []);
 
   const listProducts = useCallback(
@@ -1033,7 +1087,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const listSalesByDate = useCallback(
     (dateKey: string): Sale[] => {
       return sales
-        .filter((s) => s.status === 'completed' && dateKeyMatches(s.createdAt, dateKey))
+        .filter(
+          (s) =>
+            (s.status === 'completed' ||
+              s.status === 'partially_returned' ||
+              s.status === 'returned') &&
+            dateKeyMatches(s.createdAt, dateKey),
+        )
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
     [sales],
@@ -1075,11 +1135,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const daySales = listSalesByDate(dateKey).filter((s) => s.source !== 'employee_consumption');
       const cashSales = daySales.reduce((sum, s) => sum + saleCashAmount(s), 0);
       const otherSales = daySales.reduce((sum, s) => sum + saleNonCashAmount(s), 0);
-      const cashOuts = cashMovements
-        .filter((m) => m.type === 'out' && dateKeyMatches(m.createdAt, dateKey))
+
+      const dayMovements = cashMovements.filter((m) => dateKeyMatches(m.createdAt, dateKey));
+      const supplierCashRefunds = dayMovements
+        .filter((m) => m.type === 'in' && m.referenceType === 'supplier_return')
         .reduce((sum, m) => sum + m.amount, 0);
-      const expectedCash = openingFloat + cashSales - cashOuts;
-      return { cashSales, otherSales, cashOuts, expectedCash };
+      const customerRefunds = dayMovements
+        .filter((m) => m.type === 'out' && m.referenceType === 'customer_return')
+        .reduce((sum, m) => sum + m.amount, 0);
+      const cashExpenses = dayMovements
+        .filter((m) => m.type === 'out' && m.referenceType !== 'customer_return')
+        .reduce((sum, m) => sum + m.amount, 0);
+      const cashOuts = customerRefunds + cashExpenses;
+      const expectedCash = openingFloat + cashSales + supplierCashRefunds - cashOuts;
+
+      return {
+        cashSales,
+        otherSales,
+        supplierCashRefunds,
+        customerRefunds,
+        cashExpenses,
+        cashOuts,
+        expectedCash,
+      };
     },
     [listSalesByDate, cashMovements],
   );
@@ -1109,6 +1187,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         openingFloat,
         cashSales: preview.cashSales,
         otherSales: preview.otherSales,
+        supplierCashRefunds: preview.supplierCashRefunds,
+        customerRefunds: preview.customerRefunds,
+        cashExpenses: preview.cashExpenses,
         cashOuts: preview.cashOuts,
         expectedCash: preview.expectedCash,
         countedCash,
@@ -1136,7 +1217,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const getProductPerformance = useCallback((): ProductPerformanceReport => {
     const completed = sales.filter(
-      (s) => s.status === 'completed' && s.source !== 'employee_consumption',
+      (s) =>
+        (s.status === 'completed' ||
+          s.status === 'partially_returned' ||
+          s.status === 'returned') &&
+        s.source !== 'employee_consumption',
     );
 
     type Acc = { unitsSold: number; revenue: number; totalProfit: number };
@@ -1144,17 +1229,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     for (const sale of completed) {
       for (const item of sale.items) {
+        const returned = item.returnedQuantity ?? 0;
+        const netQty = item.quantity - returned;
+        if (netQty <= 0) continue;
         const product = products.find((p) => p.id === item.productId);
         const cost = product?.cost ?? 0;
-        const lineProfit = (item.unitPrice - cost) * item.quantity;
+        const lineProfit = (item.unitPrice - cost) * netQty;
+        const lineRevenue = item.unitPrice * netQty;
         const prev = byProduct.get(item.productId) ?? {
           unitsSold: 0,
           revenue: 0,
           totalProfit: 0,
         };
         byProduct.set(item.productId, {
-          unitsSold: prev.unitsSold + item.quantity,
-          revenue: prev.revenue + item.subtotal,
+          unitsSold: prev.unitsSold + netQty,
+          revenue: prev.revenue + lineRevenue,
           totalProfit: prev.totalProfit + lineProfit,
         });
       }
@@ -1229,7 +1318,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const rangeSales = sales
         .filter(
           (s) =>
-            s.status === 'completed' &&
+            (s.status === 'completed' ||
+              s.status === 'partially_returned' ||
+              s.status === 'returned') &&
             s.source !== 'employee_consumption' &&
             isDateKeyInRange(s.createdAt, start, end),
         )
@@ -1237,14 +1328,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       const costByProduct = new Map(products.map((p) => [p.id, p.cost ?? 0]));
 
+      const saleNetRevenue = (sale: Sale): number =>
+        sale.items.reduce((sum, item) => {
+          const netQty = item.quantity - (item.returnedQuantity ?? 0);
+          return sum + item.unitPrice * Math.max(0, netQty);
+        }, 0);
+
       const saleProfit = (sale: Sale): number =>
         sale.items.reduce((sum, item) => {
+          const netQty = item.quantity - (item.returnedQuantity ?? 0);
+          if (netQty <= 0) return sum;
           const cost = costByProduct.get(item.productId) ?? 0;
-          return sum + (item.unitPrice - cost) * item.quantity;
+          return sum + (item.unitPrice - cost) * netQty;
         }, 0);
 
       const byDay = new Map<string, IncomeDayBreakdown>();
       for (const sale of rangeSales) {
+        const revenue = saleNetRevenue(sale);
+        if (revenue <= 0 && sale.status === 'returned') continue;
         const key = toDateKey(sale.createdAt);
         const prev = byDay.get(key) ?? {
           dateKey: key,
@@ -1253,17 +1354,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           netProfit: 0,
           sales: [],
         };
-        prev.orderCount += 1;
-        prev.grossRevenue += sale.total;
+        if (revenue > 0) prev.orderCount += 1;
+        prev.grossRevenue += revenue;
         prev.netProfit += saleProfit(sale);
         prev.sales.push(sale);
         byDay.set(key, prev);
       }
 
       const days = [...byDay.values()].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
-      const grossRevenue = rangeSales.reduce((sum, s) => sum + s.total, 0);
+      const grossRevenue = rangeSales.reduce((sum, s) => sum + saleNetRevenue(s), 0);
       const netProfit = rangeSales.reduce((sum, s) => sum + saleProfit(s), 0);
-      const orderCount = rangeSales.length;
+      const orderCount = rangeSales.filter((s) => saleNetRevenue(s) > 0).length;
 
       return {
         fromKey: start,
@@ -1403,6 +1504,328 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [purchaseOrders],
   );
 
+  const createCustomerReturn = useCallback(
+    (input: CreateCustomerReturnInput): CustomerReturn => {
+      if (!input.items.length) throw new Error('Selecciona al menos un artículo a devolver');
+
+      const saleIdx = sales.findIndex((s) => s.id === input.saleId);
+      if (saleIdx < 0) throw new Error('Venta no encontrada');
+      const sale = sales[saleIdx];
+      if (sale.source === 'employee_consumption') {
+        throw new Error('No se pueden devolver liquidaciones de consumo');
+      }
+      if (sale.status === 'voided') throw new Error('La venta está anulada');
+      if (sale.status === 'returned') throw new Error('Esta venta ya fue devuelta por completo');
+
+      let workingProducts = readProducts();
+      const ids = readNextIds();
+      let movementId = ids.movement;
+      const newMovements: InventoryMovement[] = [];
+      const returnItems: CustomerReturnItem[] = [];
+      const now = new Date().toISOString();
+
+      const updatedSaleItems = sale.items.map((item) => ({ ...item }));
+
+      for (const line of input.items) {
+        const qty = Math.floor(Number(line.quantity));
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+
+        const itemIdx = updatedSaleItems.findIndex((i) => i.id === line.saleItemId);
+        if (itemIdx < 0) throw new Error('Artículo de venta no encontrado');
+        const item = updatedSaleItems[itemIdx];
+        const already = item.returnedQuantity ?? 0;
+        const remaining = item.quantity - already;
+        if (qty > remaining) {
+          throw new Error(
+            `Solo se pueden devolver ${remaining} unidad(es) de ${item.productName}`,
+          );
+        }
+
+        const pIdx = workingProducts.findIndex((p) => p.id === item.productId);
+        if (pIdx < 0) throw new Error(`Producto no encontrado: ${item.productName}`);
+        const product = workingProducts[pIdx];
+        workingProducts[pIdx] = {
+          ...product,
+          stockQuantity: product.stockQuantity + qty,
+          updatedAt: now,
+        };
+
+        const movement: InventoryMovement = {
+          id: movementId,
+          productId: product.id,
+          productName: product.name,
+          type: 'inbound',
+          quantity: qty,
+          reason: 'Devolución de cliente',
+          notes: `Factura ${sale.invoiceNumber} · ${input.reason}`,
+          createdAt: now,
+        };
+        newMovements.push(movement);
+        movementId += 1;
+
+        updatedSaleItems[itemIdx] = {
+          ...item,
+          returnedQuantity: already + qty,
+        };
+        returnItems.push({
+          saleItemId: item.id,
+          productId: item.productId,
+          productName: item.productName,
+          quantity: qty,
+          unitPrice: item.unitPrice,
+          subtotal: item.unitPrice * qty,
+        });
+      }
+
+      if (!returnItems.length) throw new Error('Selecciona al menos un artículo a devolver');
+
+      const refundTotal = returnItems.reduce((sum, i) => sum + i.subtotal, 0);
+      const refundCashAmount = input.refundMethod === 'cash' ? refundTotal : 0;
+      const returnId = ids.customerReturn;
+
+      let cashMovementId: number | null = null;
+      let nextCashId = ids.cashMovement;
+      let nextCashMovements = cashMovements;
+
+      if (refundCashAmount > 0) {
+        cashMovementId = nextCashId;
+        const cash: CashMovement = {
+          id: cashMovementId,
+          type: 'out',
+          amount: refundCashAmount,
+          reason: `Devolución cliente · ${sale.invoiceNumber}`,
+          employeeId: input.processedByUserId,
+          employeeName: input.processedBy,
+          referenceType: 'customer_return',
+          referenceId: returnId,
+          createdAt: now,
+        };
+        nextCashMovements = [cash, ...cashMovements];
+        nextCashId += 1;
+      }
+
+      const fullyReturned = updatedSaleItems.every(
+        (i) => (i.returnedQuantity ?? 0) >= i.quantity,
+      );
+      const anyReturned = updatedSaleItems.some((i) => (i.returnedQuantity ?? 0) > 0);
+      const updatedSale: Sale = {
+        ...sale,
+        items: updatedSaleItems,
+        returnedTotal: (sale.returnedTotal ?? 0) + refundTotal,
+        status: fullyReturned ? 'returned' : anyReturned ? 'partially_returned' : sale.status,
+      };
+
+      const customerReturn: CustomerReturn = {
+        id: returnId,
+        saleId: sale.id,
+        invoiceNumber: sale.invoiceNumber,
+        reason: input.reason,
+        reasonNotes: input.reasonNotes?.trim() || null,
+        items: returnItems,
+        refundTotal,
+        refundCashAmount,
+        refundMethod: input.refundMethod,
+        processedBy: input.processedBy,
+        processedByUserId: input.processedByUserId,
+        cashMovementId,
+        movementIds: newMovements.map((m) => m.id),
+        createdAt: now,
+      };
+
+      const nextSales = [...sales];
+      nextSales[saleIdx] = updatedSale;
+
+      persistProducts(workingProducts);
+      persistMovements([...newMovements, ...readMovements()]);
+      persistSales(nextSales);
+      persistCustomerReturns([customerReturn, ...customerReturns]);
+      if (refundCashAmount > 0) persistCashMovements(nextCashMovements);
+      persistIds({
+        ...ids,
+        movement: movementId,
+        customerReturn: returnId + 1,
+        cashMovement: nextCashId,
+      });
+      publishSale({ sale: updatedSale, products: workingProducts });
+      if (newMovements[0]) {
+        publishInventory({ movement: newMovements[0], products: workingProducts });
+      }
+      return customerReturn;
+    },
+    [
+      sales,
+      cashMovements,
+      customerReturns,
+      readProducts,
+      readMovements,
+      readNextIds,
+      persistProducts,
+      persistMovements,
+      persistSales,
+      persistCustomerReturns,
+      persistCashMovements,
+      persistIds,
+    ],
+  );
+
+  const listCustomerReturns = useCallback(
+    (saleId?: number) => {
+      const list = [...customerReturns].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return saleId == null ? list : list.filter((r) => r.saleId === saleId);
+    },
+    [customerReturns],
+  );
+
+  const createSupplierReturn = useCallback(
+    (input: CreateSupplierReturnInput): SupplierReturn => {
+      const supplierName = input.supplierName.trim();
+      if (!supplierName) throw new Error('El proveedor es requerido');
+      if (!input.items.length) throw new Error('Agrega al menos un producto');
+
+      let working = readProducts();
+      const ids = readNextIds();
+      let movementId = ids.movement;
+      const newMovements: InventoryMovement[] = [];
+      const orderItems: SupplierReturnItem[] = [];
+      const seen = new Set<number>();
+      const now = new Date().toISOString();
+      const returnId = ids.supplierReturn;
+
+      for (const raw of input.items) {
+        if (seen.has(raw.productId)) {
+          throw new Error('Hay productos duplicados; consolídalos en una sola línea');
+        }
+        seen.add(raw.productId);
+
+        const qty = Math.floor(Number(raw.quantity));
+        const unitCost = Math.round(Number(raw.unitCost));
+        if (!Number.isFinite(qty) || qty <= 0) {
+          throw new Error('Las cantidades deben ser enteros positivos');
+        }
+        if (!Number.isFinite(unitCost) || unitCost < 0) {
+          throw new Error('El costo unitario no puede ser negativo');
+        }
+
+        const pIdx = working.findIndex((p) => p.id === raw.productId);
+        if (pIdx < 0) throw new Error('Producto no encontrado');
+        const product = working[pIdx];
+        if (qty > product.stockQuantity) {
+          throw new Error(`Stock insuficiente para ${product.name}`);
+        }
+
+        const previousStock = product.stockQuantity;
+        const newStock = previousStock - qty;
+        working[pIdx] = {
+          ...product,
+          stockQuantity: newStock,
+          updatedAt: now,
+        };
+
+        const movement: InventoryMovement = {
+          id: movementId,
+          productId: product.id,
+          productName: product.name,
+          type: 'outbound',
+          quantity: qty,
+          reason: 'Devolución a proveedor',
+          notes: `${supplierName}${input.referenceNumber ? ` · Ref ${input.referenceNumber}` : ''}`,
+          createdAt: now,
+        };
+        newMovements.push(movement);
+        movementId += 1;
+
+        orderItems.push({
+          productId: product.id,
+          productName: product.name,
+          sku: product.sku,
+          quantity: qty,
+          unitCost,
+          lineTotal: qty * unitCost,
+          previousStock,
+          newStock,
+        });
+      }
+
+      const totalAmount = orderItems.reduce((sum, i) => sum + i.lineTotal, 0);
+      let cashMovementId: number | null = null;
+      let nextCashId = ids.cashMovement;
+      let nextCashMovements = cashMovements;
+
+      if (input.settlement === 'cash_refund' && totalAmount > 0) {
+        cashMovementId = nextCashId;
+        const cash: CashMovement = {
+          id: cashMovementId,
+          type: 'in',
+          amount: totalAmount,
+          reason: `Reembolso proveedor · ${supplierName}`,
+          employeeId: input.createdByUserId,
+          employeeName: input.createdBy,
+          referenceType: 'supplier_return',
+          referenceId: returnId,
+          createdAt: now,
+        };
+        nextCashMovements = [cash, ...cashMovements];
+        nextCashId += 1;
+      }
+
+      const supplierReturn: SupplierReturn = {
+        id: returnId,
+        supplierName,
+        supplierNit: input.supplierNit?.trim() || null,
+        referenceNumber: input.referenceNumber?.trim() || null,
+        settlement: input.settlement,
+        notes: input.notes?.trim() || null,
+        items: orderItems,
+        totalAmount,
+        itemCount: orderItems.length,
+        cashMovementId,
+        movementIds: newMovements.map((m) => m.id),
+        createdBy: input.createdBy,
+        createdByUserId: input.createdByUserId,
+        createdAt: now,
+      };
+
+      persistProducts(working);
+      persistMovements([...newMovements, ...readMovements()]);
+      persistSupplierReturns([supplierReturn, ...supplierReturns]);
+      if (cashMovementId != null) persistCashMovements(nextCashMovements);
+      persistIds({
+        ...ids,
+        movement: movementId,
+        supplierReturn: returnId + 1,
+        cashMovement: nextCashId,
+      });
+      if (newMovements[0]) {
+        publishInventory({ movement: newMovements[0], products: working });
+      }
+      return supplierReturn;
+    },
+    [
+      cashMovements,
+      supplierReturns,
+      readProducts,
+      readMovements,
+      readNextIds,
+      persistProducts,
+      persistMovements,
+      persistSupplierReturns,
+      persistCashMovements,
+      persistIds,
+    ],
+  );
+
+  const listSupplierReturns = useCallback(
+    () =>
+      [...supplierReturns].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+          b.id - a.id,
+      ),
+    [supplierReturns],
+  );
+
   const value = useMemo<DataContextType>(
     () => ({
       products,
@@ -1413,6 +1836,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supplierInvoices,
       cashCloses,
       purchaseOrders,
+      customerReturns,
+      supplierReturns,
       listProducts,
       listCategories,
       createProduct,
@@ -1441,6 +1866,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getIncomeAnalytics,
       createPurchaseOrder,
       listPurchaseOrders,
+      createCustomerReturn,
+      listCustomerReturns,
+      createSupplierReturn,
+      listSupplierReturns,
     }),
     [
       products,
@@ -1451,6 +1880,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supplierInvoices,
       cashCloses,
       purchaseOrders,
+      customerReturns,
+      supplierReturns,
       listProducts,
       listCategories,
       createProduct,
@@ -1479,6 +1910,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getIncomeAnalytics,
       createPurchaseOrder,
       listPurchaseOrders,
+      createCustomerReturn,
+      listCustomerReturns,
+      createSupplierReturn,
+      listSupplierReturns,
     ],
   );
 
@@ -1494,9 +1929,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const sale = remote.sale;
       if (!sale?.invoiceNumber) return;
 
+      let isUpdate = false;
       setSales((prev) => {
-        if (prev.some((s) => s.invoiceNumber === sale.invoiceNumber || s.id === sale.id)) {
-          return prev;
+        const existingIdx = prev.findIndex(
+          (s) => s.invoiceNumber === sale.invoiceNumber || s.id === sale.id,
+        );
+        isUpdate = existingIdx >= 0;
+        if (isUpdate) {
+          const next = [...prev];
+          next[existingIdx] = sale;
+          save(KEYS.sales, next);
+          return next;
         }
         const next = [sale, ...prev];
         save(KEYS.sales, next);
@@ -1505,7 +1948,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       if (remote.products?.length) {
         persistProducts(remote.products);
-      } else if (sale.items?.length) {
+      } else if (!isUpdate && sale.items?.length) {
         const current = load<Product[]>(KEYS.products, products);
         const next = current.map((p) => {
           const line = sale.items.find((i) => i.productId === p.id);
