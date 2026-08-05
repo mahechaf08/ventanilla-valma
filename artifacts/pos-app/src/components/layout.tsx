@@ -16,6 +16,8 @@ import {
   ChartColumn,
   PackagePlus,
   Undo2,
+  PackageOpen,
+  Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
@@ -30,13 +32,8 @@ type NavItem = {
 };
 
 const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados'];
-const inventoryGroupPaths = [
-  '/products',
-  '/inventory',
-  '/product-control',
-  '/purchase-orders',
-  '/supplier-returns',
-];
+const inventoryGroupPaths = ['/products', '/inventory', '/product-control', '/purchase-orders'];
+const returnsGroupPaths = ['/devoluciones/cliente', '/devoluciones/proveedor'];
 
 /** High-contrast accent for icons on deep blue sidebar */
 const iconAccent = 'text-cyan-400';
@@ -51,6 +48,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [inventoryOpen, setInventoryOpen] = useState(() =>
     inventoryGroupPaths.some((p) => location === p),
   );
+  const [returnsOpen, setReturnsOpen] = useState(() =>
+    returnsGroupPaths.some((p) => location === p),
+  );
 
   const isAdmin = user?.role === 'admin';
   const displayName = user?.username?.trim() || 'Usuario';
@@ -58,6 +58,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (usersGroupPaths.some((p) => location === p)) setUsersOpen(true);
     if (inventoryGroupPaths.some((p) => location === p)) setInventoryOpen(true);
+    if (returnsGroupPaths.some((p) => location === p)) setReturnsOpen(true);
   }, [location]);
 
   const adminTopItems: NavItem[] = [
@@ -67,12 +68,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/sales', label: 'Historial de Ventas', icon: ReceiptText },
   ];
 
+  const returnsSubItems: NavItem[] = [
+    { href: '/devoluciones/cliente', label: 'Devolución de Producto', icon: PackageOpen },
+    { href: '/devoluciones/proveedor', label: 'Devolución a Proveedores', icon: Truck },
+  ];
+
   const inventorySubItems: NavItem[] = [
     { href: '/products', label: 'Productos', icon: Package },
     { href: '/inventory', label: 'Movimientos de Inventario', icon: ArrowRightLeft },
     { href: '/product-control', label: 'Control de Productos', icon: ChartColumn },
     { href: '/purchase-orders', label: 'Cargas de Inventario', icon: PackagePlus },
-    { href: '/supplier-returns', label: 'Devoluciones a Proveedores', icon: Undo2 },
   ];
 
   const usersSubItems: NavItem[] = [
@@ -89,6 +94,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const usersGroupActive = usersGroupPaths.some((p) => location === p);
   const inventoryGroupActive = inventoryGroupPaths.some((p) => location === p);
+  const returnsGroupActive = returnsGroupPaths.some((p) => location === p);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -179,6 +185,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {isAdmin ? (
             <>
               {adminTopItems.map((item) => renderNavLink(item))}
+              {renderCollapsible(
+                'Devoluciones',
+                Undo2,
+                returnsOpen,
+                setReturnsOpen,
+                returnsGroupActive,
+                returnsSubItems,
+              )}
               {renderCollapsible(
                 'Inventario',
                 Warehouse,

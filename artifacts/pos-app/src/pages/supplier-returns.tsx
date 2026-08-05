@@ -145,7 +145,7 @@ export default function SupplierReturns() {
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
       <div className="px-6 py-5 border-b border-slate-200 bg-white flex-shrink-0 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Devoluciones a Proveedores</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Devolución a Proveedores</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Descuenta stock y registra reembolso en efectivo o crédito de proveedor.
           </p>
