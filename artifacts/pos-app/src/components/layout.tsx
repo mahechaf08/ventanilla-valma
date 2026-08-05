@@ -32,12 +32,7 @@ type NavItem = {
 };
 
 const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados'];
-const inventoryGroupPaths = [
-  '/products',
-  '/inventory',
-  '/product-control',
-  '/ganancia-proveedor',
-];
+const inventoryGroupPaths = ['/products', '/inventory', '/product-control'];
 const returnsGroupPaths = ['/devoluciones/cliente', '/devoluciones/proveedor'];
 
 /** High-contrast accent for icons on deep blue sidebar */
@@ -82,7 +77,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/products', label: 'Productos', icon: Package },
     { href: '/inventory', label: 'Movimientos de Inventario', icon: ArrowRightLeft },
     { href: '/product-control', label: 'Control de Productos', icon: ChartColumn },
-    { href: '/ganancia-proveedor', label: 'Ganancia por Proveedor', icon: BadgeDollarSign },
   ];
 
   const usersSubItems: NavItem[] = [
@@ -198,6 +192,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 returnsGroupActive,
                 returnsSubItems,
               )}
+              {renderNavLink({
+                href: '/ganancia-proveedor',
+                label: 'Ganancia por Proveedor',
+                icon: BadgeDollarSign,
+              })}
               {renderCollapsible(
                 'Inventario',
                 Warehouse,

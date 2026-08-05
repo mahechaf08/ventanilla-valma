@@ -60,6 +60,9 @@ function Router() {
         <Route path="/inventory" component={Inventory} />
         <Route path="/product-control" component={ProductControl} />
         <Route path="/ganancia-proveedor" component={SupplierProfitabilityPage} />
+        <Route path="/supplier-profitability">
+          <Redirect to="/ganancia-proveedor" />
+        </Route>
         <Route path="/purchase-orders">
           <Redirect to="/products" />
         </Route>
