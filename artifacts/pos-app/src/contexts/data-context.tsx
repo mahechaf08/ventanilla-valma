@@ -100,6 +100,7 @@ interface CreateSaleInput {
   payments?: SalePayment[];
   items: { productId: number; quantity: number; unitPrice?: number; productName?: string }[];
   cashier?: string;
+  cashierUserId?: number | null;
   source?: Sale['source'];
   /** When true, stock was already deducted (e.g. employee consumption). */
   skipStockDeduction?: boolean;
@@ -172,6 +173,8 @@ interface CreateCustomerReturnInput {
   refundMethod: PaymentMethod;
   processedBy: string;
   processedByUserId: number;
+  /** Optional override when resolving original cashier user id. */
+  originalCashierUserId?: number | null;
 }
 
 interface CreateSupplierReturnInput {
@@ -601,6 +604,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         status: 'completed',
         createdAt: new Date().toISOString(),
         cashier: input.cashier,
+        cashierUserId: input.cashierUserId ?? null,
         items,
         source: input.source ?? 'pos',
       };
@@ -1582,6 +1586,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const refundTotal = returnItems.reduce((sum, i) => sum + i.subtotal, 0);
       const refundCashAmount = input.refundMethod === 'cash' ? refundTotal : 0;
       const returnId = ids.customerReturn;
+      const originalCashier = sale.cashier?.trim() || 'Sin asignar';
+      const originalCashierUserId =
+        input.originalCashierUserId ?? sale.cashierUserId ?? null;
 
       let cashMovementId: number | null = null;
       let nextCashId = ids.cashMovement;
@@ -1593,7 +1600,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           id: cashMovementId,
           type: 'out',
           amount: refundCashAmount,
-          reason: `Devolución cliente · ${sale.invoiceNumber}`,
+          reason: `Devolución cliente · ${sale.invoiceNumber} · vendido por ${originalCashier} · devuelto por ${input.processedBy}`,
           employeeId: input.processedByUserId,
           employeeName: input.processedBy,
           referenceType: 'customer_return',
@@ -1625,6 +1632,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         refundTotal,
         refundCashAmount,
         refundMethod: input.refundMethod,
+        originalCashier,
+        originalCashierUserId,
         processedBy: input.processedBy,
         processedByUserId: input.processedByUserId,
         cashMovementId,

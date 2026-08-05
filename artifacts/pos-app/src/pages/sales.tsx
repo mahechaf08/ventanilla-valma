@@ -39,7 +39,7 @@ const estadoVenta: Record<string, string> = {
 
 export default function Sales() {
   const { listSales, createCustomerReturn, listCustomerReturns, sales } = useData();
-  const { user } = useAuth();
+  const { user, listUsers } = useAuth();
   const [offset, setOffset] = useState(0);
   const limit = 50;
   const pageSales = listSales({ limit, offset });
@@ -284,13 +284,19 @@ export default function Sales() {
                     Historial de devoluciones
                   </div>
                   {listCustomerReturns(selectedSale.id).map((r) => (
-                    <div key={r.id} className="text-xs text-amber-950 flex justify-between gap-2">
-                      <span>
-                        {format(new Date(r.createdAt), 'd MMM, h:mm a', { locale: es })} ·{' '}
-                        {RETURN_REASONS.find((x) => x.value === r.reason)?.label ?? r.reason}
-                        {r.refundCashAmount > 0 ? ' · reembolso en efectivo' : ''}
-                      </span>
-                      <span className="font-mono font-semibold">{formatCOP(r.refundTotal)}</span>
+                    <div key={r.id} className="text-xs text-amber-950 space-y-0.5">
+                      <div className="flex justify-between gap-2">
+                        <span>
+                          {format(new Date(r.createdAt), 'd MMM, h:mm a', { locale: es })} ·{' '}
+                          {RETURN_REASONS.find((x) => x.value === r.reason)?.label ?? r.reason}
+                          {r.refundCashAmount > 0 ? ' · reembolso en efectivo' : ''}
+                        </span>
+                        <span className="font-mono font-semibold">{formatCOP(r.refundTotal)}</span>
+                      </div>
+                      <div className="text-amber-800/90">
+                        Vendido por: {r.originalCashier || selectedSale.cashier || 'Sin asignar'} ·
+                        Devuelto por: {r.processedBy}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -321,11 +327,17 @@ export default function Sales() {
               return;
             }
             try {
+              const sellerName = selectedSale.cashier?.trim().toLowerCase();
+              const sellerId =
+                selectedSale.cashierUserId ??
+                listUsers().find((u) => u.username.trim().toLowerCase() === sellerName)?.id ??
+                null;
               const result = createCustomerReturn({
                 ...payload,
                 saleId: selectedSale.id,
                 processedBy: user.username,
                 processedByUserId: user.id,
+                originalCashierUserId: sellerId,
               });
               toast.success(
                 `Devolución registrada · ${formatCOP(result.refundTotal)}${

@@ -95,6 +95,8 @@ export interface Sale {
   status: SaleStatus;
   createdAt: string;
   cashier?: string;
+  /** User id of the original cashier when known. */
+  cashierUserId?: number | null;
   items: SaleItem[];
   source?: 'pos' | 'employee_consumption';
   /** Cumulative cash/value refunded via customer returns. */
@@ -322,6 +324,10 @@ export interface CustomerReturn {
   /** Portion refunded in cash (hits cash drawer). */
   refundCashAmount: number;
   refundMethod: PaymentMethod;
+  /** Original sale cashier (Vendido por). */
+  originalCashier: string;
+  originalCashierUserId: number | null;
+  /** Logged-in user who processed the refund (Devuelto por). */
   processedBy: string;
   processedByUserId: number;
   cashMovementId?: number | null;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
@@ -14,74 +14,168 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
-import { Search, Undo2, PackageOpen } from 'lucide-react';
-import { formatCOP } from '@/lib/currency';
-import { formatPaymentSummary } from '@/lib/payments';
-import { toast } from 'sonner';
-import type { Sale } from '@/types';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  CustomerReturnDialog,
-  RETURN_REASONS,
-} from '@/components/customer-return-dialog';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Search, Undo2, PackageOpen, UserRound } from 'lucide-react';
+import { formatCOP } from '@/lib/currency';
+import { toast } from 'sonner';
+import type { CustomerReturnReason, Sale, SaleItem } from '@/types';
+import { RETURN_REASONS } from '@/components/customer-return-dialog';
 
-const estadoVenta: Record<string, string> = {
-  completed: 'COMPLETADA',
-  voided: 'ANULADA',
-  partially_returned: 'DEVOLUCIÓN PARCIAL',
-  returned: 'DEVUELTA',
+type ReturnableLine = {
+  key: string;
+  sale: Sale;
+  item: SaleItem;
+  barcode: string | null;
+  soldQty: number;
+  returnedQty: number;
+  remainingQty: number;
+  originalCashier: string;
+  originalCashierUserId: number | null;
 };
 
-function canReturnSale(sale: Sale): boolean {
-  return (
-    sale.source !== 'employee_consumption' &&
-    sale.status !== 'voided' &&
-    sale.status !== 'returned' &&
-    sale.items.some((i) => (i.returnedQuantity ?? 0) < i.quantity)
-  );
-}
-
 export default function CustomerReturnsPage() {
-  const { sales, createCustomerReturn, listCustomerReturns } = useData();
-  const { user } = useAuth();
+  const { sales, products, createCustomerReturn, listCustomerReturns } = useData();
+  const { user, listUsers } = useAuth();
   const [query, setQuery] = useState('');
-  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
-  const [returnOpen, setReturnOpen] = useState(false);
+  const [selected, setSelected] = useState<ReturnableLine | null>(null);
+  const [qty, setQty] = useState('1');
+  const [reason, setReason] = useState<CustomerReturnReason>('customer_request');
+  const [reasonNotes, setReasonNotes] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!selectedSale) return;
-    const fresh = sales.find((s) => s.id === selectedSale.id);
-    if (fresh) setSelectedSale(fresh);
-  }, [sales, selectedSale?.id]);
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const usersByName = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const u of listUsers()) {
+      map.set(u.username.trim().toLowerCase(), u.id);
+    }
+    return map;
+  }, [listUsers]);
 
-  const returnableSales = useMemo(() => {
-    return sales
-      .filter((s) => s.source !== 'employee_consumption' && s.status !== 'voided')
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [sales]);
+  const returnableLines = useMemo((): ReturnableLine[] => {
+    const rows: ReturnableLine[] = [];
+    for (const sale of sales) {
+      if (sale.source === 'employee_consumption') continue;
+      if (sale.status === 'voided') continue;
+
+      const originalCashier = sale.cashier?.trim() || 'Sin asignar';
+      const originalCashierUserId =
+        sale.cashierUserId ??
+        usersByName.get(originalCashier.toLowerCase()) ??
+        null;
+
+      for (const item of sale.items) {
+        const returnedQty = item.returnedQuantity ?? 0;
+        const remainingQty = item.quantity - returnedQty;
+        if (remainingQty <= 0) continue;
+        const product = productById.get(item.productId);
+        rows.push({
+          key: `${sale.id}-${item.id}`,
+          sale,
+          item,
+          barcode: product?.barcode ?? null,
+          soldQty: item.quantity,
+          returnedQty,
+          remainingQty,
+          originalCashier,
+          originalCashierUserId,
+        });
+      }
+    }
+    return rows.sort(
+      (a, b) => new Date(b.sale.createdAt).getTime() - new Date(a.sale.createdAt).getTime(),
+    );
+  }, [sales, productById, usersByName]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return returnableSales.slice(0, 40);
-    return returnableSales
-      .filter((s) => {
-        const invoice = s.invoiceNumber.toLowerCase();
-        const customer = (s.customerName ?? '').toLowerCase();
-        const cashier = (s.cashier ?? '').toLowerCase();
-        return invoice.includes(q) || customer.includes(q) || cashier.includes(q);
+    if (!q) return returnableLines.slice(0, 80);
+    return returnableLines
+      .filter((row) => {
+        const name = row.item.productName.toLowerCase();
+        const invoice = row.sale.invoiceNumber.toLowerCase();
+        const barcode = (row.barcode ?? '').toLowerCase();
+        const sku = (productById.get(row.item.productId)?.sku ?? '').toLowerCase();
+        return (
+          name.includes(q) ||
+          invoice.includes(q) ||
+          barcode.includes(q) ||
+          sku.includes(q)
+        );
       })
-      .slice(0, 60);
-  }, [query, returnableSales]);
+      .slice(0, 100);
+  }, [query, returnableLines, productById]);
 
-  const recentReturns = listCustomerReturns().slice(0, 8);
+  const recentReturns = listCustomerReturns().slice(0, 10);
 
-  const openReturn = (sale: Sale) => {
-    if (!canReturnSale(sale)) {
-      toast.error('Esta venta no tiene artículos pendientes por devolver');
+  const openProcess = (row: ReturnableLine) => {
+    setSelected(row);
+    setQty(String(row.remainingQty));
+    setReason('customer_request');
+    setReasonNotes('');
+  };
+
+  const refundPreview = useMemo(() => {
+    if (!selected) return 0;
+    const n = Math.min(
+      selected.remainingQty,
+      Math.max(0, Math.floor(Number(qty) || 0)),
+    );
+    return n * selected.item.unitPrice;
+  }, [selected, qty]);
+
+  const handleProcess = () => {
+    if (!user || !selected) {
+      toast.error('Sesión no válida');
       return;
     }
-    setSelectedSale(sale);
-    setReturnOpen(true);
+    const returnQty = Math.floor(Number(qty) || 0);
+    if (returnQty <= 0) {
+      toast.error('Indica una cantidad válida');
+      return;
+    }
+    if (returnQty > selected.remainingQty) {
+      toast.error(`Solo puedes devolver hasta ${selected.remainingQty}`);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const result = createCustomerReturn({
+        saleId: selected.sale.id,
+        reason,
+        reasonNotes: reasonNotes.trim() || undefined,
+        refundMethod: 'cash',
+        processedBy: user.username,
+        processedByUserId: user.id,
+        originalCashierUserId: selected.originalCashierUserId,
+        items: [{ saleItemId: selected.item.id, quantity: returnQty }],
+      });
+      toast.success(
+        `Devolución procesada · ${formatCOP(result.refundTotal)} · caja −${formatCOP(result.refundCashAmount)}`,
+      );
+      setSelected(null);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error al procesar la devolución');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -94,8 +188,8 @@ export default function CustomerReturnsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Devolución de Producto</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Busca una factura, selecciona la venta y devuelve artículos parcial o totalmente. El
-              stock se restaura y el reembolso en efectivo ajusta el cierre de caja.
+              Busca por producto, código de barras o factura. Procesar la devolución restaura stock y
+              descuenta el reembolso en efectivo del cierre de caja.
             </p>
           </div>
         </div>
@@ -108,14 +202,21 @@ export default function CustomerReturnsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 className="pl-9 h-11"
-                placeholder="Buscar por factura, cliente o cajero..."
+                placeholder="Buscar producto, código de barras o N° de factura..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 autoFocus
               />
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Ejemplo: <span className="font-mono">VV-20260805-1234</span>
+              Mostrando artículos con unidades pendientes de devolución
+              {user ? (
+                <>
+                  {' '}
+                  · Devuelto por:{' '}
+                  <span className="font-medium text-slate-700">{user.username}</span>
+                </>
+              ) : null}
             </p>
           </CardContent>
         </Card>
@@ -124,215 +225,223 @@ export default function CustomerReturnsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead>Fecha de venta</TableHead>
                 <TableHead>Factura</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Pago</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="w-[140px]"></TableHead>
+                <TableHead>Vendido por</TableHead>
+                <TableHead className="text-right">P. venta</TableHead>
+                <TableHead className="text-right">Vendidos</TableHead>
+                <TableHead className="text-right">Pendientes</TableHead>
+                <TableHead className="w-[150px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                    No se encontraron ventas con ese criterio.
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    No hay artículos pendientes que coincidan con la búsqueda.
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((sale) => {
-                  const pending = canReturnSale(sale);
-                  return (
-                    <TableRow
-                      key={sale.id}
-                      className="cursor-pointer hover:bg-slate-50"
-                      onClick={() => setSelectedSale(sale)}
-                    >
-                      <TableCell className="font-mono font-medium">{sale.invoiceNumber}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(sale.createdAt), 'd MMM yyyy, h:mm a', { locale: es })}
-                      </TableCell>
-                      <TableCell>
-                        {sale.customerName || (
-                          <span className="text-muted-foreground italic">Cliente en tienda</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
-                          {estadoVenta[sale.status] ?? sale.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">{formatPaymentSummary(sale)}</TableCell>
-                      <TableCell className="text-right font-mono font-bold">
-                        {formatCOP(sale.total)}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          className={
-                            pending
-                              ? 'bg-amber-600 hover:bg-amber-700 text-white gap-1.5'
-                              : 'gap-1.5'
-                          }
-                          variant={pending ? 'default' : 'outline'}
-                          disabled={!pending}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openReturn(sale);
-                          }}
-                        >
-                          <Undo2 className="w-3.5 h-3.5" />
-                          Devolver
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                filtered.map((row) => (
+                  <TableRow key={row.key} className="hover:bg-slate-50">
+                    <TableCell>
+                      <div className="font-medium text-slate-900">{row.item.productName}</div>
+                      {row.barcode && (
+                        <div className="text-xs text-slate-500 font-mono">{row.barcode}</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {format(new Date(row.sale.createdAt), 'd MMM yyyy, h:mm a', { locale: es })}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{row.sale.invoiceNumber}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <UserRound className="w-3.5 h-3.5 text-slate-400" />
+                        {row.originalCashier}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCOP(row.item.unitPrice)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{row.soldQty}</TableCell>
+                    <TableCell className="text-right font-mono font-semibold text-amber-800">
+                      {row.remainingQty}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                        onClick={() => openProcess(row)}
+                      >
+                        <Undo2 className="w-3.5 h-3.5" />
+                        Devolver
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
         </div>
 
-        {selectedSale && (
-          <Card className="border-slate-200">
-            <CardContent className="pt-6 space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Venta seleccionada</div>
-                  <div className="text-lg font-mono font-bold text-slate-900">
-                    {selectedSale.invoiceNumber}
-                  </div>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {format(new Date(selectedSale.createdAt), "d MMM yyyy, h:mm a", { locale: es })}
-                    {selectedSale.cashier ? ` · ${selectedSale.cashier}` : ''}
-                  </p>
-                </div>
-                {canReturnSale(selectedSale) && (
-                  <Button
-                    className="bg-amber-600 hover:bg-amber-700 text-white gap-2"
-                    onClick={() => setReturnOpen(true)}
-                  >
-                    <Undo2 className="w-4 h-4" />
-                    Procesar devolución
-                  </Button>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-slate-100 overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-right">Vendidos</TableHead>
-                      <TableHead className="text-right">Devueltos</TableHead>
-                      <TableHead className="text-right">Pendientes</TableHead>
-                      <TableHead className="text-right">P. unit.</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedSale.items.map((item) => {
-                      const returned = item.returnedQuantity ?? 0;
-                      const pending = item.quantity - returned;
-                      return (
-                        <TableRow key={item.id}>
-                          <TableCell>{item.productName}</TableCell>
-                          <TableCell className="text-right font-mono">{item.quantity}</TableCell>
-                          <TableCell className="text-right font-mono text-amber-700">
-                            {returned}
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-semibold">
-                            {pending}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {formatCOP(item.unitPrice)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {listCustomerReturns(selectedSale.id).length > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
-                  <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
-                    Devoluciones de esta factura
-                  </div>
-                  {listCustomerReturns(selectedSale.id).map((r) => (
-                    <div key={r.id} className="text-xs text-amber-950 flex justify-between gap-2">
+        {recentReturns.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Últimas devoluciones (auditoría)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {recentReturns.map((r) => (
+                <div
+                  key={r.id}
+                  className="rounded-lg border border-slate-100 px-3 py-2.5 text-sm flex flex-wrap items-start justify-between gap-3"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div>
+                      <span className="font-medium">{r.items.map((i) => i.productName).join(', ')}</span>
+                      <span className="text-slate-500"> · {r.invoiceNumber}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>
+                        Vendido por:{' '}
+                        <span className="text-slate-700 font-medium">
+                          {r.originalCashier || 'Sin asignar'}
+                          {r.originalCashierUserId != null ? ` (#${r.originalCashierUserId})` : ''}
+                        </span>
+                      </span>
+                      <span>
+                        Devuelto por:{' '}
+                        <span className="text-slate-700 font-medium">
+                          {r.processedBy} (#{r.processedByUserId})
+                        </span>
+                      </span>
                       <span>
                         {format(new Date(r.createdAt), 'd MMM, h:mm a', { locale: es })} ·{' '}
                         {RETURN_REASONS.find((x) => x.value === r.reason)?.label ?? r.reason}
-                        {r.refundCashAmount > 0 ? ' · efectivo' : ''}
-                      </span>
-                      <span className="font-mono font-semibold">{formatCOP(r.refundTotal)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {recentReturns.length > 0 && (
-          <Card>
-            <CardContent className="pt-6">
-              <h2 className="text-sm font-semibold text-slate-800 mb-3">Últimas devoluciones</h2>
-              <div className="space-y-2">
-                {recentReturns.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <span className="font-mono font-medium">{r.invoiceNumber}</span>
-                      <span className="text-slate-500">
-                        {' '}
-                        · {format(new Date(r.createdAt), 'd MMM, h:mm a', { locale: es })} ·{' '}
-                        {RETURN_REASONS.find((x) => x.value === r.reason)?.label ?? r.reason}
                       </span>
                     </div>
-                    <span className="font-mono font-semibold">{formatCOP(r.refundTotal)}</span>
                   </div>
-                ))}
-              </div>
+                  <div className="text-right">
+                    <div className="font-mono font-semibold">{formatCOP(r.refundTotal)}</div>
+                    {r.refundCashAmount > 0 && (
+                      <Badge variant="outline" className="text-[10px] border-amber-200 text-amber-800">
+                        Caja −{formatCOP(r.refundCashAmount)}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
       </div>
 
-      {selectedSale && (
-        <CustomerReturnDialog
-          open={returnOpen}
-          sale={selectedSale}
-          onOpenChange={setReturnOpen}
-          onSubmit={(payload) => {
-            if (!user) {
-              toast.error('Sesión no válida');
-              return;
-            }
-            try {
-              const result = createCustomerReturn({
-                ...payload,
-                saleId: selectedSale.id,
-                processedBy: user.username,
-                processedByUserId: user.id,
-              });
-              toast.success(
-                `Devolución registrada · ${formatCOP(result.refundTotal)}${
-                  result.refundCashAmount > 0
-                    ? ` · caja −${formatCOP(result.refundCashAmount)}`
-                    : ''
-                }`,
-              );
-              setReturnOpen(false);
-            } catch (err: unknown) {
-              toast.error(err instanceof Error ? err.message : 'Error al registrar devolución');
-            }
-          }}
-        />
-      )}
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Procesar devolución</DialogTitle>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <div className="font-semibold text-slate-900">{selected.item.productName}</div>
+                <div className="text-xs text-slate-500 font-mono">{selected.sale.invoiceNumber}</div>
+                <div className="grid grid-cols-2 gap-2 text-sm pt-1">
+                  <div className="rounded-lg bg-white border border-slate-200 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Vendido por
+                    </div>
+                    <div className="font-medium text-slate-800 mt-0.5">
+                      {selected.originalCashier}
+                      {selected.originalCashierUserId != null
+                        ? ` · #${selected.originalCashierUserId}`
+                        : ''}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-white border border-slate-200 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Devuelto por
+                    </div>
+                    <div className="font-medium text-slate-800 mt-0.5">
+                      {user?.username ?? '—'}
+                      {user ? ` · #${user.id}` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-sm text-slate-600 flex justify-between pt-1">
+                  <span>Precio de venta</span>
+                  <span className="font-mono font-semibold">{formatCOP(selected.item.unitPrice)}</span>
+                </div>
+                <div className="text-sm text-slate-600 flex justify-between">
+                  <span>Pendientes</span>
+                  <span className="font-mono font-semibold">{selected.remainingQty}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Cantidad a devolver</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={selected.remainingQty}
+                    className="font-mono"
+                    value={qty}
+                    onChange={(e) => setQty(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Motivo</Label>
+                  <Select
+                    value={reason}
+                    onValueChange={(v) => setReason(v as CustomerReturnReason)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RETURN_REASONS.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Notas (opcional)</Label>
+                <Textarea
+                  rows={2}
+                  value={reasonNotes}
+                  onChange={(e) => setReasonNotes(e.target.value)}
+                  placeholder="Detalle adicional..."
+                />
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm flex justify-between">
+                <span className="text-amber-900">Reembolso en efectivo (caja)</span>
+                <span className="font-mono font-bold text-amber-950">
+                  −{formatCOP(refundPreview)}
+                </span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelected(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={saving || refundPreview <= 0}
+              onClick={handleProcess}
+            >
+              {saving ? 'Procesando...' : 'Procesar Devolución'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

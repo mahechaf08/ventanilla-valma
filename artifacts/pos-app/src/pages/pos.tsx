@@ -305,6 +305,7 @@ export default function POS() {
         customerName: customerName.trim() || undefined,
         payments,
         cashier: user?.username,
+        cashierUserId: user?.id ?? null,
         items: cart.map(item => ({
           productId: item.product.id,
           quantity: item.quantity,
