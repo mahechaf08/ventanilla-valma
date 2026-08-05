@@ -18,6 +18,7 @@ import {
   Undo2,
   PackageOpen,
   Truck,
+  BadgeDollarSign,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
@@ -32,7 +33,13 @@ type NavItem = {
 };
 
 const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados'];
-const inventoryGroupPaths = ['/products', '/inventory', '/product-control', '/purchase-orders'];
+const inventoryGroupPaths = [
+  '/products',
+  '/inventory',
+  '/product-control',
+  '/purchase-orders',
+  '/ganancia-proveedor',
+];
 const returnsGroupPaths = ['/devoluciones/cliente', '/devoluciones/proveedor'];
 
 /** High-contrast accent for icons on deep blue sidebar */
@@ -78,6 +85,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/inventory', label: 'Movimientos de Inventario', icon: ArrowRightLeft },
     { href: '/product-control', label: 'Control de Productos', icon: ChartColumn },
     { href: '/purchase-orders', label: 'Cargas de Inventario', icon: PackagePlus },
+    { href: '/ganancia-proveedor', label: 'Ganancia por Proveedor', icon: BadgeDollarSign },
   ];
 
   const usersSubItems: NavItem[] = [

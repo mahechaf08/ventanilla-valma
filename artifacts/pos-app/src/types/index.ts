@@ -362,3 +362,34 @@ export interface SupplierReturn {
   createdByUserId: number;
   createdAt: string;
 }
+
+export interface SupplierProductProfitRow {
+  productId: number;
+  productName: string;
+  sku: string;
+  supplierName: string;
+  unitsPurchased: number;
+  unitsSold: number;
+  /** Total capital invested in purchases (qty * unitCost) in period. */
+  purchaseCostTotal: number;
+  /** Average purchase unit cost used for COGS when available. */
+  avgPurchaseUnitCost: number | null;
+  grossRevenue: number;
+  cogs: number;
+  netProfit: number;
+  currentStock: number;
+}
+
+export interface SupplierProfitabilityReport {
+  supplierFilter: string | 'all';
+  fromKey: string;
+  toKey: string;
+  capitalInvested: number;
+  grossRevenue: number;
+  cogs: number;
+  netProfit: number;
+  /** ROI on capital invested when > 0; else margin on revenue. */
+  roiPercent: number | null;
+  marginPercent: number | null;
+  products: SupplierProductProfitRow[];
+}

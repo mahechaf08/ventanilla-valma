@@ -56,10 +56,28 @@ import type {
   SupplierAccountSummary,
   SupplierInvoicePayment,
   SupplierInvoiceStockItem,
+  SupplierProductProfitRow,
+  SupplierProfitabilityReport,
   SupplierReturn,
   SupplierReturnItem,
   SupplierReturnSettlement,
 } from '@/types';
+
+function parseProductSuppliers(raw: string | null | undefined): string[] {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((s) => String(s).trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeSupplierKey(name: string): string {
+  return name.trim().toLowerCase();
+}
 
 function ensureProducts(): Product[] {
   const existing = load<Product[] | null>(KEYS.products, null);
@@ -253,6 +271,12 @@ interface DataContextType {
   saveCashClose: (input: SaveCashCloseInput) => CashClose;
   getProductPerformance: () => ProductPerformanceReport;
   getIncomeAnalytics: (fromKey: string, toKey: string) => IncomeAnalytics;
+  listSupplierNames: () => string[];
+  getSupplierProfitability: (
+    supplierFilter: string | 'all',
+    fromKey: string,
+    toKey: string,
+  ) => SupplierProfitabilityReport;
   createPurchaseOrder: (input: CreatePurchaseOrderInput) => PurchaseOrder;
   listPurchaseOrders: () => PurchaseOrder[];
   createCustomerReturn: (input: CreateCustomerReturnInput) => CustomerReturn;
@@ -1383,6 +1407,232 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [products, sales],
   );
 
+  const listSupplierNames = useCallback((): string[] => {
+    const names = new Map<string, string>();
+    for (const po of purchaseOrders) {
+      const n = po.supplierName.trim();
+      if (n) names.set(normalizeSupplierKey(n), n);
+    }
+    for (const p of products) {
+      for (const s of parseProductSuppliers(p.suppliers)) {
+        names.set(normalizeSupplierKey(s), s);
+      }
+    }
+    for (const r of supplierReturns) {
+      const n = r.supplierName.trim();
+      if (n) names.set(normalizeSupplierKey(n), n);
+    }
+    return [...names.values()].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [purchaseOrders, products, supplierReturns]);
+
+  const getSupplierProfitability = useCallback(
+    (
+      supplierFilter: string | 'all',
+      fromKey: string,
+      toKey: string,
+    ): SupplierProfitabilityReport => {
+      const start = fromKey <= toKey ? fromKey : toKey;
+      const end = fromKey <= toKey ? toKey : fromKey;
+      const filterKey =
+        supplierFilter === 'all' ? null : normalizeSupplierKey(supplierFilter);
+
+      type PurchaseAcc = {
+        units: number;
+        costTotal: number;
+        supplierName: string;
+      };
+      const purchasesByProduct = new Map<number, PurchaseAcc>();
+
+      for (const po of purchaseOrders) {
+        const poSupplier = po.supplierName.trim();
+        if (!poSupplier) continue;
+        if (filterKey && normalizeSupplierKey(poSupplier) !== filterKey) continue;
+        const dateKey =
+          po.purchaseDate?.length === 10 ? po.purchaseDate : toDateKey(po.createdAt);
+        if (dateKey < start || dateKey > end) continue;
+
+        for (const line of po.items) {
+          const prev = purchasesByProduct.get(line.productId) ?? {
+            units: 0,
+            costTotal: 0,
+            supplierName: poSupplier,
+          };
+          purchasesByProduct.set(line.productId, {
+            units: prev.units + line.quantity,
+            costTotal: prev.costTotal + line.lineTotal,
+            supplierName: filterKey ? poSupplier : prev.supplierName || poSupplier,
+          });
+        }
+      }
+
+      // Products tagged with this supplier (catalog) even if no PO in range
+      const catalogProductIds = new Set<number>();
+      for (const p of products) {
+        const tagged = parseProductSuppliers(p.suppliers);
+        if (filterKey) {
+          if (tagged.some((s) => normalizeSupplierKey(s) === filterKey)) {
+            catalogProductIds.add(p.id);
+          }
+        } else if (tagged.length > 0) {
+          catalogProductIds.add(p.id);
+        }
+      }
+      for (const id of purchasesByProduct.keys()) catalogProductIds.add(id);
+
+      // Historical purchases (any date) for attribution
+      const historicalPurchaseProductIds = new Set<number>();
+      for (const po of purchaseOrders) {
+        if (filterKey && normalizeSupplierKey(po.supplierName) !== filterKey) continue;
+        for (const line of po.items) historicalPurchaseProductIds.add(line.productId);
+      }
+
+      const isProductLinkedToFilter = (productId: number): boolean => {
+        if (catalogProductIds.has(productId) || purchasesByProduct.has(productId)) return true;
+        if (historicalPurchaseProductIds.has(productId)) return true;
+        if (!filterKey) {
+          const product = products.find((p) => p.id === productId);
+          return parseProductSuppliers(product?.suppliers).length > 0;
+        }
+        return false;
+      };
+
+      type SaleAcc = { units: number; revenue: number };
+      const salesByProduct = new Map<number, SaleAcc>();
+
+      for (const sale of sales) {
+        if (sale.source === 'employee_consumption') continue;
+        if (sale.status === 'voided') continue;
+        if (!isDateKeyInRange(sale.createdAt, start, end)) continue;
+
+        for (const item of sale.items) {
+          if (!isProductLinkedToFilter(item.productId)) continue;
+          catalogProductIds.add(item.productId);
+
+          const netQty = item.quantity - (item.returnedQuantity ?? 0);
+          if (netQty <= 0) continue;
+          const prev = salesByProduct.get(item.productId) ?? { units: 0, revenue: 0 };
+          salesByProduct.set(item.productId, {
+            units: prev.units + netQty,
+            revenue: prev.revenue + item.unitPrice * netQty,
+          });
+        }
+      }
+
+      // Resolve unit cost for COGS: avg from period POs, else historical avg from supplier POs, else product.cost
+      const resolveUnitCost = (productId: number): number => {
+        const period = purchasesByProduct.get(productId);
+        if (period && period.units > 0) {
+          return Math.round(period.costTotal / period.units);
+        }
+        let units = 0;
+        let costTotal = 0;
+        for (const po of purchaseOrders) {
+          if (filterKey && normalizeSupplierKey(po.supplierName) !== filterKey) continue;
+          for (const line of po.items) {
+            if (line.productId !== productId) continue;
+            units += line.quantity;
+            costTotal += line.lineTotal;
+          }
+        }
+        if (units > 0) return Math.round(costTotal / units);
+        const product = products.find((p) => p.id === productId);
+        return product?.cost ?? 0;
+      };
+
+      const resolveSupplierLabel = (productId: number): string => {
+        if (filterKey && supplierFilter !== 'all') return supplierFilter;
+        const fromPurchase = purchasesByProduct.get(productId)?.supplierName;
+        if (fromPurchase) return fromPurchase;
+        const product = products.find((p) => p.id === productId);
+        const tagged = parseProductSuppliers(product?.suppliers);
+        if (tagged[0]) return tagged[0];
+        for (const po of purchaseOrders) {
+          if (po.items.some((li) => li.productId === productId)) {
+            return po.supplierName.trim();
+          }
+        }
+        return 'Sin proveedor';
+      };
+
+      const productIds = new Set<number>([
+        ...catalogProductIds,
+        ...purchasesByProduct.keys(),
+        ...salesByProduct.keys(),
+      ]);
+
+      const rows: SupplierProductProfitRow[] = [];
+      for (const productId of productIds) {
+        const product = products.find((p) => p.id === productId);
+        if (!product) continue;
+        const purchase = purchasesByProduct.get(productId);
+        const sold = salesByProduct.get(productId);
+        const unitsPurchased = purchase?.units ?? 0;
+        const unitsSold = sold?.units ?? 0;
+        const purchaseCostTotal = purchase?.costTotal ?? 0;
+        const grossRevenue = sold?.revenue ?? 0;
+        if (unitsPurchased === 0 && unitsSold === 0) continue;
+
+        const avgPurchaseUnitCost =
+          unitsPurchased > 0
+            ? Math.round(purchaseCostTotal / unitsPurchased)
+            : resolveUnitCost(productId);
+        const unitCostForCogs = resolveUnitCost(productId);
+        const cogs = unitsSold * unitCostForCogs;
+        const netProfit = grossRevenue - cogs;
+
+        rows.push({
+          productId,
+          productName: product.name,
+          sku: product.sku,
+          supplierName: resolveSupplierLabel(productId),
+          unitsPurchased,
+          unitsSold,
+          purchaseCostTotal,
+          avgPurchaseUnitCost:
+            unitsPurchased > 0 || unitCostForCogs > 0 ? avgPurchaseUnitCost : null,
+          grossRevenue,
+          cogs,
+          netProfit,
+          currentStock: product.stockQuantity,
+        });
+      }
+
+      rows.sort(
+        (a, b) =>
+          b.netProfit - a.netProfit ||
+          b.grossRevenue - a.grossRevenue ||
+          a.productName.localeCompare(b.productName, 'es'),
+      );
+
+      const capitalInvested = rows.reduce((s, r) => s + r.purchaseCostTotal, 0);
+      const grossRevenue = rows.reduce((s, r) => s + r.grossRevenue, 0);
+      const cogs = rows.reduce((s, r) => s + r.cogs, 0);
+      const netProfit = grossRevenue - cogs;
+      const marginPercent =
+        grossRevenue > 0
+          ? Math.round((netProfit / grossRevenue) * 1000) / 10
+          : null;
+      const roiPercent =
+        capitalInvested > 0
+          ? Math.round((netProfit / capitalInvested) * 1000) / 10
+          : marginPercent;
+
+      return {
+        supplierFilter,
+        fromKey: start,
+        toKey: end,
+        capitalInvested,
+        grossRevenue,
+        cogs,
+        netProfit,
+        roiPercent,
+        marginPercent,
+        products: rows,
+      };
+    },
+    [products, sales, purchaseOrders],
+  );
+
   const createPurchaseOrder = useCallback(
     (input: CreatePurchaseOrderInput): PurchaseOrder => {
       const supplierName = input.supplierName.trim();
@@ -1873,6 +2123,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       saveCashClose,
       getProductPerformance,
       getIncomeAnalytics,
+      listSupplierNames,
+      getSupplierProfitability,
       createPurchaseOrder,
       listPurchaseOrders,
       createCustomerReturn,
@@ -1917,6 +2169,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       saveCashClose,
       getProductPerformance,
       getIncomeAnalytics,
+      listSupplierNames,
+      getSupplierProfitability,
       createPurchaseOrder,
       listPurchaseOrders,
       createCustomerReturn,

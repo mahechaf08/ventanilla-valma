@@ -8,6 +8,7 @@ import Products from './pages/products';
 import Inventory from './pages/inventory';
 import ProductControl from './pages/product-control';
 import PurchaseOrders from './pages/purchase-orders';
+import SupplierProfitabilityPage from './pages/supplier-profitability';
 import SupplierReturns from './pages/supplier-returns';
 import CustomerReturnsPage from './pages/customer-returns';
 import Sales from './pages/sales';
@@ -60,6 +61,7 @@ function Router() {
         <Route path="/inventory" component={Inventory} />
         <Route path="/product-control" component={ProductControl} />
         <Route path="/purchase-orders" component={PurchaseOrders} />
+        <Route path="/ganancia-proveedor" component={SupplierProfitabilityPage} />
         <Route path="/devoluciones/cliente" component={CustomerReturnsPage} />
         <Route path="/devoluciones/proveedor" component={SupplierReturns} />
         <Route path="/customer-returns">
