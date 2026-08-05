@@ -14,7 +14,7 @@ import {
   save,
   type NextIds,
 } from '@/lib/storage';
-import { dateKeyMatches, isSameLocalDay } from '@/lib/date';
+import { dateKeyMatches, isDateKeyInRange, isSameLocalDay, toDateKey } from '@/lib/date';
 import { normalizePayments, saleCashAmount, saleNonCashAmount } from '@/lib/payments';
 import {
   connectRealtime,
@@ -40,6 +40,8 @@ import type {
   PaymentMethod,
   Product,
   ProductInput,
+  IncomeAnalytics,
+  IncomeDayBreakdown,
   ProductPerformanceReport,
   ProductPerformanceRow,
   ProductUpdate,
@@ -213,6 +215,7 @@ interface DataContextType {
   getCashCloseForDate: (dateKey: string) => CashClose | null;
   saveCashClose: (input: SaveCashCloseInput) => CashClose;
   getProductPerformance: () => ProductPerformanceReport;
+  getIncomeAnalytics: (fromKey: string, toKey: string) => IncomeAnalytics;
   createPurchaseOrder: (input: CreatePurchaseOrderInput) => PurchaseOrder;
   listPurchaseOrders: () => PurchaseOrder[];
 }
@@ -1218,6 +1221,63 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [products, sales]);
 
+  const getIncomeAnalytics = useCallback(
+    (fromKey: string, toKey: string): IncomeAnalytics => {
+      const start = fromKey <= toKey ? fromKey : toKey;
+      const end = fromKey <= toKey ? toKey : fromKey;
+
+      const rangeSales = sales
+        .filter(
+          (s) =>
+            s.status === 'completed' &&
+            s.source !== 'employee_consumption' &&
+            isDateKeyInRange(s.createdAt, start, end),
+        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      const costByProduct = new Map(products.map((p) => [p.id, p.cost ?? 0]));
+
+      const saleProfit = (sale: Sale): number =>
+        sale.items.reduce((sum, item) => {
+          const cost = costByProduct.get(item.productId) ?? 0;
+          return sum + (item.unitPrice - cost) * item.quantity;
+        }, 0);
+
+      const byDay = new Map<string, IncomeDayBreakdown>();
+      for (const sale of rangeSales) {
+        const key = toDateKey(sale.createdAt);
+        const prev = byDay.get(key) ?? {
+          dateKey: key,
+          orderCount: 0,
+          grossRevenue: 0,
+          netProfit: 0,
+          sales: [],
+        };
+        prev.orderCount += 1;
+        prev.grossRevenue += sale.total;
+        prev.netProfit += saleProfit(sale);
+        prev.sales.push(sale);
+        byDay.set(key, prev);
+      }
+
+      const days = [...byDay.values()].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+      const grossRevenue = rangeSales.reduce((sum, s) => sum + s.total, 0);
+      const netProfit = rangeSales.reduce((sum, s) => sum + saleProfit(s), 0);
+      const orderCount = rangeSales.length;
+
+      return {
+        fromKey: start,
+        toKey: end,
+        grossRevenue,
+        netProfit,
+        orderCount,
+        averageTicket: orderCount > 0 ? Math.round(grossRevenue / orderCount) : 0,
+        days,
+      };
+    },
+    [products, sales],
+  );
+
   const createPurchaseOrder = useCallback(
     (input: CreatePurchaseOrderInput): PurchaseOrder => {
       const supplierName = input.supplierName.trim();
@@ -1378,6 +1438,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getCashCloseForDate,
       saveCashClose,
       getProductPerformance,
+      getIncomeAnalytics,
       createPurchaseOrder,
       listPurchaseOrders,
     }),
@@ -1415,6 +1476,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getCashCloseForDate,
       saveCashClose,
       getProductPerformance,
+      getIncomeAnalytics,
       createPurchaseOrder,
       listPurchaseOrders,
     ],

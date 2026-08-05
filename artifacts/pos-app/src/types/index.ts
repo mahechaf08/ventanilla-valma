@@ -234,6 +234,24 @@ export interface ProductPerformanceReport {
   topLeastProfitable: ProductPerformanceRow[];
 }
 
+export interface IncomeDayBreakdown {
+  dateKey: string;
+  orderCount: number;
+  grossRevenue: number;
+  netProfit: number;
+  sales: Sale[];
+}
+
+export interface IncomeAnalytics {
+  fromKey: string;
+  toKey: string;
+  grossRevenue: number;
+  netProfit: number;
+  orderCount: number;
+  averageTicket: number;
+  days: IncomeDayBreakdown[];
+}
+
 export type PurchaseOrderStatus = 'completed';
 
 export interface PurchaseOrderItem {
