@@ -5,6 +5,7 @@ export const RealtimeEvents = {
   SALE_CREATED: 'sale:created',
   NEW_SALE: 'new_sale',
   SALES_UPDATED: 'sales_updated',
+  DATA_PURGED: 'data_purged',
   INVENTORY_UPDATED: 'inventory:updated',
   CASH_CLOSED: 'cash:closed',
   POS_SALE: 'pos:sale',

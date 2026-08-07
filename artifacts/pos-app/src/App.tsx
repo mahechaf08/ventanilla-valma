@@ -12,6 +12,7 @@ import SupplierReturns from './pages/supplier-returns';
 import CustomerReturnsPage from './pages/customer-returns';
 import Sales from './pages/sales';
 import Users from './pages/users';
+import DataMaintenance from './pages/data-maintenance';
 import RegisterConsumption from './pages/register-consumption';
 import EmployeeConsumptionAdmin from './pages/employee-consumption';
 import SupplierInvoicesPage from './pages/supplier-invoices';
@@ -79,6 +80,7 @@ function Router() {
         <Route path="/consumo-empleados" component={EmployeeConsumptionAdmin} />
         <Route path="/pago-facturas" component={SupplierInvoicesPage} />
         <Route path="/users" component={Users} />
+        <Route path="/mantenimiento" component={DataMaintenance} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

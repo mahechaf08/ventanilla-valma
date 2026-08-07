@@ -86,3 +86,50 @@ export async function pushSalesBulkToNeon(sales: Sale[]): Promise<number> {
     return 0;
   }
 }
+
+export type PurgeScope = 'sales' | 'cash' | 'full';
+
+/**
+ * Admin-only Neon purge. Requires Neon admin username/password + confirmation BORRAR.
+ */
+export async function purgeNeonTransactionalData(input: {
+  scope: PurgeScope;
+  username: string;
+  password: string;
+  confirmation: string;
+}): Promise<{ ok: boolean; error?: string; posSalesDeleted?: number }> {
+  const base = resolveApiBaseUrl();
+  if (!base) {
+    return { ok: false, error: 'API no configurada (VITE_SOCKET_URL / VITE_API_URL)' };
+  }
+
+  try {
+    const res = await fetch(`${base}/api/admin/purge`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        scope: input.scope,
+        username: input.username,
+        password: input.password,
+        confirmation: input.confirmation,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      posSalesDeleted?: number;
+    };
+    if (!res.ok) {
+      return { ok: false, error: data.error || `Error ${res.status}` };
+    }
+    return {
+      ok: true,
+      posSalesDeleted: data.posSalesDeleted,
+    };
+  } catch {
+    return { ok: false, error: 'No se pudo contactar el servidor' };
+  }
+}

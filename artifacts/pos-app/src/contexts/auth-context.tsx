@@ -30,6 +30,8 @@ interface AuthContextType {
   createUser: (input: CreateUserInput) => User;
   updateUser: (id: number, input: UpdateUserInput) => User;
   deleteUser: (id: number) => void;
+  /** Verify the signed-in admin's password for destructive actions. */
+  verifyCurrentPassword: (password: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -188,6 +190,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [users, user, persistUsers],
   );
 
+  const verifyCurrentPassword = useCallback(
+    (password: string) => {
+      if (!user) return false;
+      const all = ensureUsers();
+      const found = all.find((u) => u.id === user.id);
+      if (!found || found.role !== 'admin') return false;
+      return found.password === password;
+    },
+    [user],
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -199,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createUser,
         updateUser,
         deleteUser,
+        verifyCurrentPassword,
       }}
     >
       {children}

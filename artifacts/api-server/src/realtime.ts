@@ -10,6 +10,8 @@ export const RealtimeEvents = {
   NEW_SALE: "new_sale",
   /** Global invalidate signal — clients should refetch from Neon */
   SALES_UPDATED: "sales_updated",
+  /** Admin wiped transactional data — clients must clear matching local caches */
+  DATA_PURGED: "data_purged",
   INVENTORY_UPDATED: "inventory:updated",
   CASH_CLOSED: "cash:closed",
   /** Client → server relays (localStorage POS fan-out) */
@@ -95,6 +97,10 @@ export function emitSaleCreated(payload: unknown): void {
 
 export function emitSalesUpdated(payload: unknown): void {
   io?.emit(RealtimeEvents.SALES_UPDATED, payload);
+}
+
+export function emitDataPurged(payload: unknown): void {
+  io?.emit(RealtimeEvents.DATA_PURGED, payload);
 }
 
 export function emitInventoryUpdated(payload: unknown): void {

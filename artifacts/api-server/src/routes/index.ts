@@ -9,6 +9,7 @@ import salesRouter from "./sales";
 import dashboardRouter from "./dashboard";
 import realtimeSyncRouter from "./realtime-sync";
 import posSyncRouter from "./pos-sync";
+import adminPurgeRouter from "./admin-purge";
 
 const router: IRouter = Router();
 
@@ -19,6 +20,8 @@ router.use(healthRouter);
 router.use(realtimeSyncRouter);
 /** Durable Neon POS sales ledger (cross-PC source of truth) */
 router.use(posSyncRouter);
+/** Admin purge — self-authenticates via admin username/password in body */
+router.use(adminPurgeRouter);
 
 // ── Protected routes (must be authenticated) ─────────────────────────────────
 router.use(requireAuth);

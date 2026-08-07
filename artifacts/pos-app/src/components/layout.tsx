@@ -18,6 +18,7 @@ import {
   Undo2,
   PackageOpen,
   Truck,
+  Eraser,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
@@ -31,7 +32,7 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
-const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados'];
+const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados', '/mantenimiento'];
 const inventoryGroupPaths = ['/products', '/inventory', '/product-control'];
 const returnsGroupPaths = ['/devoluciones/cliente', '/devoluciones/proveedor'];
 
@@ -83,6 +84,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/users', label: 'Gestión de usuarios', icon: Users },
     { href: '/consumo', label: 'Registrar consumo', icon: Coffee },
     { href: '/consumo-empleados', label: 'Historial consumo', icon: ClipboardList },
+    { href: '/mantenimiento', label: 'Mantenimiento / Limpieza de Datos', icon: Eraser },
   ];
 
   const employeeNavItems: NavItem[] = [

@@ -36,6 +36,8 @@ import {
   fetchAllSalesFromNeon,
   pushSaleToNeon,
   pushSalesBulkToNeon,
+  purgeNeonTransactionalData,
+  type PurgeScope,
 } from '@/lib/pos-sync-api';
 import type {
   CashClose,
@@ -296,7 +298,21 @@ interface DataContextType {
   /** Pull latest sales from Socket.IO buffer / Render API and merge locally. */
   syncSalesFromServer: () => Promise<{ merged: number; connected: boolean }>;
   isSyncingSales: boolean;
+  /** Admin-only local (+ optional Neon) transactional purge. */
+  purgeTransactionalData: (input: {
+    scope: PurgeScope;
+    restoreStock: boolean;
+    username: string;
+    password: string;
+    confirmation: string;
+  }) => Promise<{
+    localCleared: string[];
+    stockRestoredUnits: number;
+    neon: { ok: boolean; error?: string; posSalesDeleted?: number };
+  }>;
 }
+
+export type { PurgeScope };
 
 export interface LiquidatedConsumptionBatch {
   saleId: number;
@@ -2226,6 +2242,155 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [bumpSaleIds, persistSales],
   );
 
+  const applyLocalPurge = useCallback(
+    (scope: PurgeScope, restoreStock: boolean): { cleared: string[]; stockRestoredUnits: number } => {
+      const cleared: string[] = [];
+      let stockRestoredUnits = 0;
+      const ids = readNextIds();
+
+      const clearSalesBundle = () => {
+        const currentSales = load<Sale[]>(KEYS.sales, []);
+        if (restoreStock) {
+          const currentProducts = load<Product[]>(KEYS.products, products);
+          const stockMap = new Map(currentProducts.map((p) => [p.id, p.stockQuantity]));
+          for (const sale of currentSales) {
+            for (const item of sale.items ?? []) {
+              const remaining = Math.max(
+                0,
+                item.quantity - (item.returnedQuantity ?? 0),
+              );
+              if (remaining <= 0) continue;
+              stockMap.set(
+                item.productId,
+                (stockMap.get(item.productId) ?? 0) + remaining,
+              );
+              stockRestoredUnits += remaining;
+            }
+          }
+          const nextProducts = currentProducts.map((p) => ({
+            ...p,
+            stockQuantity: stockMap.get(p.id) ?? p.stockQuantity,
+            updatedAt: new Date().toISOString(),
+          }));
+          persistProducts(nextProducts);
+        }
+
+        persistSales([]);
+        persistCustomerReturns([]);
+        // Drop sale / customer-return related inventory movements only
+        const movs = load<InventoryMovement[]>(KEYS.movements, []);
+        const nextMovs = movs.filter((m) => {
+          const reason = (m.reason || '').toLowerCase();
+          const notes = (m.notes || '').toLowerCase();
+          const isSaleRelated =
+            reason.includes('devolución de cliente') ||
+            reason.includes('devolucion de cliente') ||
+            notes.includes('factura vv-') ||
+            notes.includes('factura cons-');
+          return !isSaleRelated;
+        });
+        if (nextMovs.length !== movs.length) {
+          persistMovements(nextMovs);
+          cleared.push('movimientos de venta/devolución');
+        }
+        persistIds({
+          ...ids,
+          sale: 1,
+          saleItem: 1,
+          customerReturn: 1,
+        });
+        cleared.push('ventas', 'devoluciones de cliente');
+      };
+
+      const clearCashBundle = () => {
+        persistCashCloses([]);
+        persistCashMovements([]);
+        persistIds({
+          ...readNextIds(),
+          cashClose: 1,
+          cashMovement: 1,
+        });
+        cleared.push('cierres de caja', 'movimientos de caja');
+      };
+
+      const clearFullExtras = () => {
+        persistSupplierReturns([]);
+        persistIds({
+          ...readNextIds(),
+          supplierReturn: 1,
+        });
+        cleared.push('devoluciones a proveedor');
+      };
+
+      if (scope === 'sales') {
+        clearSalesBundle();
+      } else if (scope === 'cash') {
+        clearCashBundle();
+      } else {
+        clearSalesBundle();
+        clearCashBundle();
+        clearFullExtras();
+      }
+
+      return { cleared: [...new Set(cleared)], stockRestoredUnits };
+    },
+    [
+      products,
+      persistProducts,
+      persistSales,
+      persistCustomerReturns,
+      persistMovements,
+      persistCashCloses,
+      persistCashMovements,
+      persistSupplierReturns,
+      persistIds,
+      readNextIds,
+    ],
+  );
+
+  const purgeTransactionalData = useCallback(
+    async (input: {
+      scope: PurgeScope;
+      restoreStock: boolean;
+      username: string;
+      password: string;
+      confirmation: string;
+    }) => {
+      const confirmation = input.confirmation.trim().toUpperCase();
+      if (confirmation !== 'BORRAR') {
+        throw new Error('Debes escribir BORRAR para confirmar');
+      }
+      if (!input.password) {
+        throw new Error('Contraseña requerida');
+      }
+
+      // Enforce admin on server before mutating local (when API is reachable)
+      const neon = await purgeNeonTransactionalData({
+        scope: input.scope,
+        username: input.username,
+        password: input.password,
+        confirmation,
+      });
+
+      const apiConfigured = !neon.error?.includes('API no configurada');
+      if (apiConfigured && !neon.ok) {
+        throw new Error(neon.error || 'El servidor rechazó la limpieza');
+      }
+
+      const local = applyLocalPurge(
+        input.scope,
+        input.scope === 'cash' ? false : input.restoreStock,
+      );
+
+      return {
+        localCleared: local.cleared,
+        stockRestoredUnits: local.stockRestoredUnits,
+        neon,
+      };
+    },
+    [applyLocalPurge],
+  );
+
   const applySalesSyncPayload = useCallback(
     (payload: SalesSyncPayload | { sales: SalesSyncEntry[] }, deviceId: string): number => {
       const entries = payload.sales ?? [];
@@ -2358,6 +2523,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       listSupplierReturns,
       syncSalesFromServer,
       isSyncingSales,
+      purgeTransactionalData,
     }),
     [
       products,
@@ -2406,6 +2572,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       listSupplierReturns,
       syncSalesFromServer,
       isSyncingSales,
+      purgeTransactionalData,
     ],
   );
 
@@ -2487,6 +2654,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
     };
 
+    const replaceSalesFromNeon = () => {
+      void fetchAllSalesFromNeon({ limit: 2000 }).then((data) => {
+        const remote = data?.sales ?? [];
+        const next = [...remote].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+            b.id - a.id,
+        );
+        persistSales(next);
+        setLastSalesSyncAt(new Date().toISOString());
+      });
+    };
+
     const resync = () => {
       resyncFromNeon();
       requestSalesSync();
@@ -2495,14 +2675,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
     };
 
-    const onSalesUpdated = () => {
-      // Invalidate local cache and refetch durable ledger from PostgreSQL
+    const onSalesUpdated = (payload?: { reason?: string; scope?: PurgeScope }) => {
+      if (payload?.reason === 'admin_purge') {
+        const scope = payload.scope;
+        if (scope === 'sales' || scope === 'cash' || scope === 'full') {
+          applyLocalPurge(scope, false);
+        }
+        if (scope === 'sales' || scope === 'full') {
+          replaceSalesFromNeon();
+          return;
+        }
+      }
       resyncFromNeon();
+    };
+
+    const onDataPurged = (payload: { scope?: PurgeScope }) => {
+      const scope = payload?.scope;
+      if (scope !== 'sales' && scope !== 'cash' && scope !== 'full') return;
+      applyLocalPurge(scope, false);
+      if (scope === 'sales' || scope === 'full') {
+        replaceSalesFromNeon();
+      }
     };
 
     sock.on(RealtimeEvents.SALE_CREATED, onSale);
     sock.on(RealtimeEvents.NEW_SALE, onSale);
     sock.on(RealtimeEvents.SALES_UPDATED, onSalesUpdated);
+    sock.on(RealtimeEvents.DATA_PURGED, onDataPurged);
     sock.on(RealtimeEvents.SALES_SYNC, onSalesSync);
     sock.on(RealtimeEvents.INVENTORY_UPDATED, onInventory);
     sock.on(RealtimeEvents.CASH_CLOSED, onCash);
@@ -2516,6 +2715,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       sock.off(RealtimeEvents.SALE_CREATED, onSale);
       sock.off(RealtimeEvents.NEW_SALE, onSale);
       sock.off(RealtimeEvents.SALES_UPDATED, onSalesUpdated);
+      sock.off(RealtimeEvents.DATA_PURGED, onDataPurged);
       sock.off(RealtimeEvents.SALES_SYNC, onSalesSync);
       sock.off(RealtimeEvents.INVENTORY_UPDATED, onInventory);
       sock.off(RealtimeEvents.CASH_CLOSED, onCash);
@@ -2523,10 +2723,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       sock.off('reconnect', resync);
     };
   }, [
+    applyLocalPurge,
     applyNeonSalesLedger,
     applySalesSyncPayload,
     mergeRemoteSale,
     persistProducts,
+    persistSales,
     products,
   ]);
 

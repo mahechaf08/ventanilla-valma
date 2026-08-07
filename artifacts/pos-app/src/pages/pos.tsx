@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import {
   Search,
@@ -22,6 +21,7 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PaymentMethod, Product, Sale } from '@/types';
@@ -49,6 +49,8 @@ const BEEP_STORAGE_KEY = 'vv_pos_scan_beep';
 interface CartItem {
   product: Product;
   quantity: number;
+  /** Unit price for this line (admin may override catalog price). */
+  unitPrice: number;
 }
 
 type PaymentRow = {
@@ -63,6 +65,10 @@ function newPaymentRow(method: PaymentMethod = 'cash', amount = ''): PaymentRow 
     method,
     amount,
   };
+}
+
+function lineUnitPrice(item: CartItem): number {
+  return item.unitPrice ?? item.product.price;
 }
 
 function getCategoryStyle(category: string): { icon: React.ReactNode; bg: string; iconColor: string } {
@@ -82,9 +88,78 @@ function getCategoryStyle(category: string): { icon: React.ReactNode; bg: string
   return { icon: <Star className="w-6 h-6" />, bg: 'bg-blue-50', iconColor: 'text-blue-600' };
 }
 
+function ReceiptTicket({
+  sale,
+  payments,
+  className,
+}: {
+  sale: Sale;
+  payments: { method: PaymentMethod; amount: number }[];
+  className?: string;
+}) {
+  return (
+    <div className={cn('pos-thermal-receipt-inner font-mono text-sm text-slate-900', className)}>
+      <div className="text-center mb-4">
+        <h3 className="font-bold text-base mb-1">Ventanilla Valma</h3>
+        <p className="text-xs">Factura / Tique</p>
+        <p className="text-xs">{sale.invoiceNumber}</p>
+        <p className="text-xs">
+          {new Date(sale.createdAt).toLocaleString('es-CO', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })}
+        </p>
+        {sale.cashier && <p className="text-xs mt-1">Cajero: {sale.cashier}</p>}
+        {sale.customerName && <p className="text-xs">Cliente: {sale.customerName}</p>}
+      </div>
+
+      <div className="border-t border-b border-dashed border-slate-400 py-2 space-y-2 mb-2">
+        {sale.items.map((item) => (
+          <div key={item.id} className="flex justify-between items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="leading-snug break-words">{item.productName}</div>
+              <div className="text-[11px] text-slate-600">
+                {item.quantity} x {formatCOP(item.unitPrice)}
+              </div>
+            </div>
+            <div className="shrink-0 font-semibold">{formatCOP(item.subtotal)}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between font-bold text-base pt-1">
+          <span>Valor a pagar</span>
+          <span>{formatCOP(sale.total)}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-1 text-xs border-t border-dashed border-slate-400 pt-2">
+        <div className="font-semibold mb-1">Pagos</div>
+        {payments.map((p, idx) => (
+          <div key={`${p.method}-${idx}`} className="flex justify-between">
+            <span>{paymentMethodLabel(p.method)}</span>
+            <span>{formatCOP(p.amount)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between font-semibold pt-1">
+          <span>Cambio</span>
+          <span>{formatCOP(sale.changeGiven ?? 0)}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 text-center text-xs">
+        <p>Gracias por su compra</p>
+        <p>Ventanilla Valma</p>
+      </div>
+    </div>
+  );
+}
+
 export default function POS() {
   const { products: catalog, listProducts, listCategories, createSale } = useData();
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
@@ -126,7 +201,6 @@ export default function POS() {
     if (modalBlocking) return;
     const el = searchInputRef.current;
     if (!el) return;
-    // Avoid stealing focus from another editable field
     const active = document.activeElement;
     if (active && active !== el && isEditableTarget(active)) return;
     el.focus({ preventScroll: true });
@@ -169,7 +243,7 @@ export default function POS() {
             : item,
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product, quantity: 1, unitPrice: product.price }];
     });
     return true;
   }, [cart]);
@@ -202,14 +276,12 @@ export default function POS() {
     [addToCart, beepEnabled, findByCode, focusSearch],
   );
 
-  // Keep search ready for the next scan when not in a modal
   useEffect(() => {
     if (modalBlocking) return;
     const t = window.setTimeout(() => focusSearch(), 50);
     return () => window.clearTimeout(t);
   }, [modalBlocking, focusSearch]);
 
-  // Global rapid-input listener (scanner) when focus is not in a form field
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (modalBlocking) return;
@@ -218,10 +290,7 @@ export default function POS() {
       const active = document.activeElement;
       const onSearch = active === searchInputRef.current;
 
-      // Search input handles Enter itself
       if (onSearch) return;
-
-      // Ignore typing in other inputs / dialogs
       if (isEditableTarget(active)) return;
 
       const now = Date.now();
@@ -242,7 +311,6 @@ export default function POS() {
 
       if (e.key.length !== 1) return;
 
-      // Reset buffer if gap is too large (human typing)
       if (now - buf.lastAt > 80) {
         buf.value = '';
       }
@@ -268,7 +336,21 @@ export default function POS() {
     }).filter(item => item.quantity > 0));
   };
 
-  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
+  const updateUnitPrice = (productId: number, raw: string) => {
+    if (!isAdmin) return;
+    const parsed = Math.round(Number(raw));
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    setCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId ? { ...item, unitPrice: parsed } : item,
+      ),
+    );
+  };
+
+  const subtotal = useMemo(
+    () => cart.reduce((sum, item) => sum + lineUnitPrice(item) * item.quantity, 0),
+    [cart],
+  );
   const total = subtotal;
 
   const totalEntered = useMemo(
@@ -306,9 +388,10 @@ export default function POS() {
         payments,
         cashier: user?.username,
         cashierUserId: user?.id ?? null,
-        items: cart.map(item => ({
+        items: cart.map((item) => ({
           productId: item.product.id,
           quantity: item.quantity,
+          unitPrice: lineUnitPrice(item),
         })),
       });
       setReceiptSale(sale);
@@ -325,6 +408,10 @@ export default function POS() {
 
   const updatePaymentRow = (key: string, patch: Partial<PaymentRow>) => {
     setPaymentRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const handlePrintReceipt = () => {
+    window.print();
   };
 
   const receiptPayments =
@@ -350,7 +437,6 @@ export default function POS() {
                 handleBarcodeScan(search);
               }}
               onBlur={() => {
-                // Reclaim focus shortly after blur unless a modal opened
                 window.setTimeout(() => focusSearch(), 120);
               }}
               placeholder="Escanear código o buscar por nombre / SKU…"
@@ -499,41 +585,85 @@ export default function POS() {
             </div>
           ) : (
             <div className="space-y-3">
-              {cart.map(item => (
-                <div
-                  key={item.product.id}
-                  className={cn(
-                    'bg-white border border-slate-200 rounded-xl shadow-sm p-3 flex flex-col gap-2 transition-colors',
-                    lastScannedId === item.product.id && scanFlash && 'border-amber-400 bg-amber-50 ring-2 ring-amber-300',
-                  )}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="font-medium text-sm text-slate-900 leading-tight pr-4">{item.product.name}</div>
-                    <div className="font-mono font-semibold text-sm text-slate-900">
-                      {formatCOP(item.product.price * item.quantity)}
+              {cart.map((item) => {
+                const unit = lineUnitPrice(item);
+                const lineTotal = unit * item.quantity;
+                const priceOverridden = unit !== item.product.price;
+                return (
+                  <div
+                    key={item.product.id}
+                    className={cn(
+                      'bg-white border border-slate-200 rounded-xl shadow-sm p-3 flex flex-col gap-2 transition-colors',
+                      lastScannedId === item.product.id && scanFlash && 'border-amber-400 bg-amber-50 ring-2 ring-amber-300',
+                    )}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="font-medium text-sm text-slate-900 leading-tight pr-4">
+                        {item.product.name}
+                      </div>
+                      <div className="font-mono font-semibold text-sm text-slate-900">
+                        {formatCOP(lineTotal)}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <div className="text-xs text-slate-500 font-mono">{formatCOP(item.product.price)} / u.</div>
-                    <div className="flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 p-1">
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(item.product.id, -1)}>
-                        {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-600" /> : <Minus className="w-3 h-3" />}
-                      </Button>
-                      <span className="w-8 text-center font-mono text-sm">{item.quantity}</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(item.product.id, 1)}>
-                        <Plus className="w-3 h-3" />
-                      </Button>
+                    <div className="flex items-center justify-between mt-1 gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {isAdmin ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-slate-500">$</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={unit}
+                              onChange={(e) => updateUnitPrice(item.product.id, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              className="h-7 w-[5.5rem] font-mono text-xs px-1.5"
+                              aria-label={`Precio unitario de ${item.product.name}`}
+                              title="Editar precio unitario (solo admin)"
+                            />
+                            <span className="text-xs text-slate-500 shrink-0">/ u.</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-500 font-mono">
+                            {formatCOP(unit)} / u.
+                          </div>
+                        )}
+                        {isAdmin && priceOverridden && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] h-5 px-1.5 border-amber-300 text-amber-800 bg-amber-50"
+                          >
+                            editado
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 p-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(item.product.id, -1)}>
+                          {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-600" /> : <Minus className="w-3 h-3" />}
+                        </Button>
+                        <span className="w-8 text-center font-mono text-sm">{item.quantity}</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(item.product.id, 1)}>
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
+                    {isAdmin && priceOverridden && (
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        Lista: {formatCOP(item.product.price)} / u.
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </ScrollArea>
 
         <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
           <div className="flex justify-between items-end">
-            <span className="text-sm font-medium text-slate-600 uppercase tracking-wide">Total</span>
+            <span className="text-sm font-medium text-slate-600 tracking-wide">
+              Valor a pagar
+            </span>
             <span className="text-3xl font-bold font-mono text-slate-900 tracking-tight">
               {formatCOP(total)}
             </span>
@@ -544,7 +674,7 @@ export default function POS() {
             disabled={cart.length === 0}
             onClick={openCheckout}
           >
-            Cobrar {formatCOP(total)}
+            Valor a pagar {formatCOP(total)}
           </Button>
         </div>
       </div>
@@ -558,7 +688,7 @@ export default function POS() {
             <div className="grid gap-5 py-2">
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
-                  <div className="text-[11px] text-slate-500 mb-0.5">Total a pagar</div>
+                  <div className="text-[11px] text-slate-500 mb-0.5">Valor a pagar</div>
                   <div className="font-mono font-bold text-slate-900 text-sm">{formatCOP(total)}</div>
                 </div>
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-center">
@@ -692,64 +822,41 @@ export default function POS() {
       </Dialog>
 
       <Dialog open={!!receiptSale} onOpenChange={(open) => !open && setReceiptSale(null)}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle className="text-center">Venta Completada</DialogTitle>
           </DialogHeader>
           {receiptSale && (
-            <div className="py-6 px-4 bg-white border border-dashed border-slate-300 mx-auto w-full max-w-[320px] font-mono text-sm">
-              <div className="text-center mb-6">
-                <h3 className="font-bold text-lg mb-1 text-slate-900">Ventanilla Valma</h3>
-                <p className="text-slate-500 text-xs">Recibo {receiptSale.invoiceNumber}</p>
-                <p className="text-slate-500 text-xs">{new Date(receiptSale.createdAt).toLocaleString('es-CO')}</p>
-              </div>
-
-              <div className="space-y-2 mb-4">
-                {receiptSale.items.map((item) => (
-                  <div key={item.id} className="flex justify-between items-start">
-                    <div className="pr-4">
-                      <div>{item.productName}</div>
-                      <div className="text-xs text-slate-500">{item.quantity} x {formatCOP(item.unitPrice)}</div>
-                    </div>
-                    <div>{formatCOP(item.subtotal)}</div>
-                  </div>
-                ))}
-              </div>
-
-              <Separator className="border-dashed my-4" />
-
-              <div className="space-y-1">
-                <div className="flex justify-between font-bold text-base mt-2 pt-2 border-t border-dashed text-slate-900">
-                  <span>Total</span>
-                  <span>{formatCOP(receiptSale.total)}</span>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-1 text-xs text-slate-700 border-t border-dashed pt-3">
-                <div className="font-semibold text-slate-900 mb-1">Pagos</div>
-                {receiptPayments.map((p, idx) => (
-                  <div key={`${p.method}-${idx}`} className="flex justify-between">
-                    <span>{paymentMethodLabel(p.method)}</span>
-                    <span>{formatCOP(p.amount)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between pt-1 font-semibold text-slate-900">
-                  <span>Cambio</span>
-                  <span>{formatCOP(receiptSale.changeGiven ?? 0)}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 text-center text-xs text-slate-500">
-                {receiptSale.customerName && <p>Cliente: {receiptSale.customerName}</p>}
-                <p className="mt-4">Gracias por su compra en Ventanilla Valma</p>
-              </div>
+            <div className="py-4 px-3 bg-white border border-dashed border-slate-300 mx-auto w-full max-w-[320px]">
+              <ReceiptTicket sale={receiptSale} payments={receiptPayments} />
             </div>
           )}
-          <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setReceiptSale(null)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold">Nueva Venta</Button>
+          <DialogFooter className="flex-col sm:flex-col gap-2 sm:space-x-0">
+            <Button
+              type="button"
+              onClick={handlePrintReceipt}
+              className="w-full h-11 gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimir Factura / Tique
+            </Button>
+            <Button
+              onClick={() => setReceiptSale(null)}
+              variant="outline"
+              className="w-full font-semibold"
+            >
+              Nueva Venta
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Print-only thermal ticket (80mm) */}
+      {receiptSale && (
+        <div id="pos-thermal-receipt" className="hidden" aria-hidden>
+          <ReceiptTicket sale={receiptSale} payments={receiptPayments} />
+        </div>
+      )}
     </div>
   );
 }
