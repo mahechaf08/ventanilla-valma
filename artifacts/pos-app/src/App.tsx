@@ -11,6 +11,7 @@ import SupplierProfitabilityPage from './pages/supplier-profitability';
 import SupplierReturns from './pages/supplier-returns';
 import CustomerReturnsPage from './pages/customer-returns';
 import Sales from './pages/sales';
+import SalesInvoicesPage from './pages/sales-invoices';
 import Users from './pages/users';
 import DataMaintenance from './pages/data-maintenance';
 import RegisterConsumption from './pages/register-consumption';
@@ -76,11 +77,18 @@ function Router() {
           <Redirect to="/devoluciones/proveedor" />
         </Route>
         <Route path="/sales" component={Sales} />
+        <Route path="/facturas-ventas" component={SalesInvoicesPage} />
+        <Route path="/sales-invoices">
+          <Redirect to="/facturas-ventas" />
+        </Route>
         <Route path="/consumo" component={RegisterConsumption} />
         <Route path="/consumo-empleados" component={EmployeeConsumptionAdmin} />
         <Route path="/pago-facturas" component={SupplierInvoicesPage} />
         <Route path="/users" component={Users} />
         <Route path="/mantenimiento" component={DataMaintenance} />
+        <Route path="/limpieza-datos">
+          <Redirect to="/mantenimiento" />
+        </Route>
         <Route component={NotFound} />
       </Switch>
     </Layout>

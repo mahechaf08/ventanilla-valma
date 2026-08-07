@@ -40,9 +40,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatCOP } from '@/lib/currency';
-import { PAYMENT_METHODS, paymentMethodLabel } from '@/lib/payments';
+import { PAYMENT_METHODS } from '@/lib/payments';
 import { isEditableTarget, playScanBeep } from '@/lib/scan-beep';
 import { cn } from '@/lib/utils';
+import { ReceiptTicket, salePaymentsForReceipt } from '@/components/receipt-ticket';
 
 const BEEP_STORAGE_KEY = 'vv_pos_scan_beep';
 
@@ -86,74 +87,6 @@ function getCategoryStyle(category: string): { icon: React.ReactNode; bg: string
   if (c.includes('drop') || c.includes('pour') || c.includes('dripper'))
     return { icon: <Droplets className="w-6 h-6" />, bg: 'bg-cyan-50', iconColor: 'text-cyan-600' };
   return { icon: <Star className="w-6 h-6" />, bg: 'bg-blue-50', iconColor: 'text-blue-600' };
-}
-
-function ReceiptTicket({
-  sale,
-  payments,
-  className,
-}: {
-  sale: Sale;
-  payments: { method: PaymentMethod; amount: number }[];
-  className?: string;
-}) {
-  return (
-    <div className={cn('pos-thermal-receipt-inner font-mono text-sm text-slate-900', className)}>
-      <div className="text-center mb-4">
-        <h3 className="font-bold text-base mb-1">Ventanilla Valma</h3>
-        <p className="text-xs">Factura / Tique</p>
-        <p className="text-xs">{sale.invoiceNumber}</p>
-        <p className="text-xs">
-          {new Date(sale.createdAt).toLocaleString('es-CO', {
-            dateStyle: 'short',
-            timeStyle: 'short',
-          })}
-        </p>
-        {sale.cashier && <p className="text-xs mt-1">Cajero: {sale.cashier}</p>}
-        {sale.customerName && <p className="text-xs">Cliente: {sale.customerName}</p>}
-      </div>
-
-      <div className="border-t border-b border-dashed border-slate-400 py-2 space-y-2 mb-2">
-        {sale.items.map((item) => (
-          <div key={item.id} className="flex justify-between items-start gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="leading-snug break-words">{item.productName}</div>
-              <div className="text-[11px] text-slate-600">
-                {item.quantity} x {formatCOP(item.unitPrice)}
-              </div>
-            </div>
-            <div className="shrink-0 font-semibold">{formatCOP(item.subtotal)}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-1 text-sm">
-        <div className="flex justify-between font-bold text-base pt-1">
-          <span>Valor a pagar</span>
-          <span>{formatCOP(sale.total)}</span>
-        </div>
-      </div>
-
-      <div className="mt-3 space-y-1 text-xs border-t border-dashed border-slate-400 pt-2">
-        <div className="font-semibold mb-1">Pagos</div>
-        {payments.map((p, idx) => (
-          <div key={`${p.method}-${idx}`} className="flex justify-between">
-            <span>{paymentMethodLabel(p.method)}</span>
-            <span>{formatCOP(p.amount)}</span>
-          </div>
-        ))}
-        <div className="flex justify-between font-semibold pt-1">
-          <span>Cambio</span>
-          <span>{formatCOP(sale.changeGiven ?? 0)}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 text-center text-xs">
-        <p>Gracias por su compra</p>
-        <p>Ventanilla Valma</p>
-      </div>
-    </div>
-  );
 }
 
 export default function POS() {
@@ -414,12 +347,7 @@ export default function POS() {
     window.print();
   };
 
-  const receiptPayments =
-    receiptSale?.payments && receiptSale.payments.length > 0
-      ? receiptSale.payments
-      : receiptSale
-        ? [{ method: receiptSale.paymentMethod, amount: receiptSale.total }]
-        : [];
+  const receiptPayments = receiptSale ? salePaymentsForReceipt(receiptSale) : [];
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-50">

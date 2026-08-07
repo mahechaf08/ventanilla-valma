@@ -190,7 +190,7 @@ export default function DataMaintenancePage() {
             </span>
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Mantenimiento / Limpieza de Datos
+            Limpieza de Datos
           </h1>
           <p className="text-slate-500 mt-1">
             Borra historial de ventas y registros transaccionales. Los productos, categorías,

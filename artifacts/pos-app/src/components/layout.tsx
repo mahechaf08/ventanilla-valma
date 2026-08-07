@@ -18,7 +18,8 @@ import {
   Undo2,
   PackageOpen,
   Truck,
-  Eraser,
+  FileText,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/auth-context';
@@ -32,7 +33,7 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
-const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados', '/mantenimiento'];
+const usersGroupPaths = ['/users', '/consumo', '/consumo-empleados'];
 const inventoryGroupPaths = ['/products', '/inventory', '/product-control'];
 const returnsGroupPaths = ['/devoluciones/cliente', '/devoluciones/proveedor'];
 
@@ -65,6 +66,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const adminTopItems: NavItem[] = [
     { href: '/', label: 'Registro de Ventas', icon: LayoutDashboard },
     { href: '/pos', label: 'Punto de Venta', icon: ShoppingCart },
+    { href: '/facturas-ventas', label: 'Factura de Ventas', icon: FileText },
     { href: '/pago-facturas', label: 'Pago de Facturas', icon: Receipt },
     { href: '/sales', label: 'Historial de Ventas', icon: ReceiptText },
   ];
@@ -84,7 +86,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/users', label: 'Gestión de usuarios', icon: Users },
     { href: '/consumo', label: 'Registrar consumo', icon: Coffee },
     { href: '/consumo-empleados', label: 'Historial consumo', icon: ClipboardList },
-    { href: '/mantenimiento', label: 'Mantenimiento / Limpieza de Datos', icon: Eraser },
   ];
 
   const employeeNavItems: NavItem[] = [
@@ -215,6 +216,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 usersGroupActive,
                 usersSubItems,
               )}
+              {renderNavLink({
+                href: '/mantenimiento',
+                label: 'Limpieza de Datos',
+                icon: Trash2,
+              })}
             </>
           ) : (
             employeeNavItems.map((item) => renderNavLink(item))
