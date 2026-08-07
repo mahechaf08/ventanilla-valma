@@ -13,6 +13,10 @@ export const RealtimeEvents = {
   POS_CASH_CLOSE: 'pos:cash-close',
   POS_SYNC_REQUEST: 'pos:sync-request',
   SALES_SYNC: 'sales:sync',
+  POS_PRESENCE: 'pos:presence',
+  PRESENCE_SNAPSHOT: 'presence:snapshot',
+  USER_UPDATED: 'user:updated',
+  POS_USER_UPDATED: 'pos:user-updated',
 } as const;
 
 const DEVICE_KEY = 'vv_device_id';
@@ -215,4 +219,20 @@ export function publishCashClose(
     ...payload,
     deviceId: payload.deviceId ?? getDeviceId(),
   });
+}
+
+export function publishPresence(userId: number, username: string) {
+  const s = connectRealtime();
+  s?.emit(RealtimeEvents.POS_PRESENCE, { userId, username });
+}
+
+export function publishUserUpdated(payload: {
+  userId: number;
+  enabled?: boolean;
+  lastLoginAt?: string | null;
+  username?: string;
+  role?: string;
+}) {
+  const s = connectRealtime();
+  s?.emit(RealtimeEvents.POS_USER_UPDATED, payload);
 }

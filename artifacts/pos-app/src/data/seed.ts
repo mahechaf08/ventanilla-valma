@@ -11,6 +11,8 @@ export const SEED_USERS: User[] = [
     username: 'Felipe Mahecha',
     password: '05051997Fm08',
     role: 'admin',
+    enabled: true,
+    lastLoginAt: null,
     createdAt: now,
   },
   {
@@ -18,6 +20,8 @@ export const SEED_USERS: User[] = [
     username: 'cajero',
     password: 'cajero123',
     role: 'user',
+    enabled: true,
+    lastLoginAt: null,
     createdAt: now,
   },
   {
@@ -25,6 +29,8 @@ export const SEED_USERS: User[] = [
     username: 'Darney',
     password: 'Valma2026',
     role: 'admin',
+    enabled: true,
+    lastLoginAt: null,
     createdAt: now,
   },
   {
@@ -32,6 +38,8 @@ export const SEED_USERS: User[] = [
     username: 'Martha',
     password: 'Valma2026',
     role: 'admin',
+    enabled: true,
+    lastLoginAt: null,
     createdAt: now,
   },
 ];

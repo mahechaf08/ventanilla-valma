@@ -26,6 +26,10 @@ export interface User {
   password: string;
   role: Role;
   createdAt: string;
+  /** When false, login is blocked. Defaults to true for legacy records. */
+  enabled?: boolean;
+  /** ISO timestamp of last successful login. */
+  lastLoginAt?: string | null;
 }
 
 export interface AuthUser {

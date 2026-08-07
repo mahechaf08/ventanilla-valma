@@ -22,6 +22,13 @@ export const RealtimeEvents = {
   POS_SYNC_REQUEST: "pos:sync-request",
   /** Server → client: recent sales payload */
   SALES_SYNC: "sales:sync",
+  /** Client announces who is signed in on this socket */
+  POS_PRESENCE: "pos:presence",
+  /** Server → all: currently online user ids */
+  PRESENCE_SNAPSHOT: "presence:snapshot",
+  /** Fan-out user profile fields (enabled / lastLoginAt) */
+  USER_UPDATED: "user:updated",
+  POS_USER_UPDATED: "pos:user-updated",
 } as const;
 
 const MAX_BUFFERED_SALES = 300;
@@ -35,6 +42,28 @@ type SaleSyncEntry = {
 
 let io: Server | null = null;
 const recentSales: SaleSyncEntry[] = [];
+/** socket.id → signed-in POS user */
+const presenceBySocket = new Map<
+  string,
+  { userId: number; username: string; at: string }
+>();
+
+function presenceSnapshot() {
+  const byUser = new Map<number, { userId: number; username: string; at: string }>();
+  for (const entry of presenceBySocket.values()) {
+    const prev = byUser.get(entry.userId);
+    if (!prev || entry.at >= prev.at) byUser.set(entry.userId, entry);
+  }
+  return {
+    onlineUserIds: [...byUser.keys()],
+    users: [...byUser.values()],
+    syncedAt: new Date().toISOString(),
+  };
+}
+
+function broadcastPresence(): void {
+  io?.emit(RealtimeEvents.PRESENCE_SNAPSHOT, presenceSnapshot());
+}
 
 function saleKey(sale: unknown): string | null {
   if (!sale || typeof sale !== "object") return null;
@@ -192,6 +221,22 @@ function wireClientRelays(socket: Socket): void {
       "Sales sync sent to client",
     );
   });
+  socket.on(
+    RealtimeEvents.POS_PRESENCE,
+    (payload?: { userId?: number; username?: string }) => {
+      const userId = Number(payload?.userId);
+      if (!Number.isFinite(userId) || userId <= 0) return;
+      presenceBySocket.set(socket.id, {
+        userId,
+        username: String(payload?.username ?? ""),
+        at: new Date().toISOString(),
+      });
+      broadcastPresence();
+    },
+  );
+  socket.on(RealtimeEvents.POS_USER_UPDATED, (payload) => {
+    socket.broadcast.emit(RealtimeEvents.USER_UPDATED, payload);
+  });
 }
 
 export function attachRealtime(httpServer: HttpServer): Server {
@@ -215,12 +260,14 @@ export function attachRealtime(httpServer: HttpServer): Server {
         syncedAt: new Date().toISOString(),
       });
     }
-    // Tell clients to pull durable Neon ledger on connect
     socket.emit(RealtimeEvents.SALES_UPDATED, {
       reason: "connected",
       syncedAt: new Date().toISOString(),
     });
+    socket.emit(RealtimeEvents.PRESENCE_SNAPSHOT, presenceSnapshot());
     socket.on("disconnect", (reason) => {
+      presenceBySocket.delete(socket.id);
+      broadcastPresence();
       logger.info({ id: socket.id, reason }, "Socket disconnected");
     });
   });
