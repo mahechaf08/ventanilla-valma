@@ -29,6 +29,7 @@ import {
   RETURN_REASONS,
 } from '@/components/customer-return-dialog';
 import { Link } from 'wouter';
+import { SyncSalesButton } from '@/components/sync-sales-button';
 
 const estadoVenta: Record<string, string> = {
   completed: 'COMPLETADA',
@@ -87,12 +88,15 @@ export default function Sales() {
             Ver facturas y recibos anteriores.
           </p>
         </div>
-        <Link href="/devoluciones/cliente">
-          <Button variant="outline" className="gap-2">
-            <Undo2 className="w-4 h-4" />
-            Ir a devoluciones
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <SyncSalesButton />
+          <Link href="/devoluciones/cliente">
+            <Button variant="outline" className="gap-2">
+              <Undo2 className="w-4 h-4" />
+              Ir a devoluciones
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="p-6 flex-1 overflow-hidden flex flex-col">

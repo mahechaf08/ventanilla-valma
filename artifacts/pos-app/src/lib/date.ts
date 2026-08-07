@@ -1,21 +1,36 @@
-/** Local calendar day as YYYY-MM-DD */
+/** Business timezone for Ventanilla Valma (Colombia). */
+export const BUSINESS_TIMEZONE = 'America/Bogota';
+
+/**
+ * Calendar day as YYYY-MM-DD in America/Bogota.
+ * Avoids UTC vs local PC offset hiding sales near midnight.
+ */
 export function toDateKey(input: Date | string = new Date()): string {
   const d = typeof input === 'string' ? new Date(input) : input;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  if (Number.isNaN(d.getTime())) {
+    return toDateKey(new Date());
+  }
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 }
 
+/** Parse YYYY-MM-DD as a noon Bogota-safe local Date for arithmetic. */
 export function parseDateKey(dateKey: string): Date {
   const [y, m, d] = dateKey.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
+  return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0, 0);
 }
 
 export function addDaysToDateKey(dateKey: string, days: number): string {
   const d = parseDateKey(dateKey);
   d.setDate(d.getDate() + days);
-  return toDateKey(d);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /** Inclusive day count between two YYYY-MM-DD keys */
@@ -40,17 +55,23 @@ export function isDateKeyInRange(isoOrKey: string, fromKey: string, toKey: strin
   return key >= fromKey && key <= toKey;
 }
 
-/** Monday of the week containing `ref` (local) */
+/** Monday of the week containing `ref` (Bogota calendar) */
 export function startOfWeekDateKey(ref = new Date()): string {
-  const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const key = toDateKey(ref);
+  const d = parseDateKey(key);
   const day = d.getDay(); // 0 Sun … 6 Sat
   const offset = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + offset);
-  return toDateKey(d);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayNum = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dayNum}`;
 }
 
 export function startOfMonthDateKey(ref = new Date()): string {
-  return toDateKey(new Date(ref.getFullYear(), ref.getMonth(), 1));
+  const key = toDateKey(ref);
+  const [y, m] = key.split('-').map(Number);
+  return `${y}-${String(m).padStart(2, '0')}-01`;
 }
 
 export function dateKeyMatches(iso: string, dateKey: string): boolean {
@@ -58,10 +79,5 @@ export function dateKeyMatches(iso: string, dateKey: string): boolean {
 }
 
 export function isSameLocalDay(iso: string, ref = new Date()): boolean {
-  const d = new Date(iso);
-  return (
-    d.getFullYear() === ref.getFullYear() &&
-    d.getMonth() === ref.getMonth() &&
-    d.getDate() === ref.getDate()
-  );
+  return toDateKey(iso) === toDateKey(ref);
 }

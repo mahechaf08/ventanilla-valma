@@ -59,6 +59,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { IncomeAnalytics } from '@/types';
 import { cn } from '@/lib/utils';
+import { SyncSalesButton } from '@/components/sync-sales-button';
 
 function todayInputValue() {
   return toDateKey(new Date());
@@ -107,11 +108,14 @@ export default function Dashboard() {
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Registro de Ventas</h1>
-          <p className="text-slate-500 mt-1">
-            Control diario de ventas, ingresos, utilidad y cierre de caja.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Registro de Ventas</h1>
+            <p className="text-slate-500 mt-1">
+              Control diario de ventas, ingresos, utilidad y cierre de caja.
+            </p>
+          </div>
+          <SyncSalesButton className="flex-shrink-0" />
         </div>
 
         <Tabs defaultValue="resumen" className="space-y-6">

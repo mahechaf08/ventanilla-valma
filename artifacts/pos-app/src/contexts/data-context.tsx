@@ -18,15 +18,25 @@ import { dateKeyMatches, isDateKeyInRange, isSameLocalDay, toDateKey } from '@/l
 import { normalizePayments, saleCashAmount, saleNonCashAmount } from '@/lib/payments';
 import {
   connectRealtime,
+  fetchSalesSyncFromApi,
   getDeviceId,
   publishCashClose,
   publishInventory,
   publishSale,
   RealtimeEvents,
+  requestSalesSync,
+  setLastSalesSyncAt,
   type CashCloseRealtimePayload,
   type InventoryRealtimePayload,
   type SaleRealtimePayload,
+  type SalesSyncEntry,
+  type SalesSyncPayload,
 } from '@/lib/realtime';
+import {
+  fetchAllSalesFromNeon,
+  pushSaleToNeon,
+  pushSalesBulkToNeon,
+} from '@/lib/pos-sync-api';
 import type {
   CashClose,
   CashCloseStatus,
@@ -283,6 +293,9 @@ interface DataContextType {
   listCustomerReturns: (saleId?: number) => CustomerReturn[];
   createSupplierReturn: (input: CreateSupplierReturnInput) => SupplierReturn;
   listSupplierReturns: () => SupplierReturn[];
+  /** Pull latest sales from Socket.IO buffer / Render API and merge locally. */
+  syncSalesFromServer: () => Promise<{ merged: number; connected: boolean }>;
+  isSyncingSales: boolean;
 }
 
 export interface LiquidatedConsumptionBatch {
@@ -324,6 +337,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     load(KEYS.supplierReturns, []),
   );
   const [nextIds, setNextIds] = useState<NextIds>(() => ensureNextIds());
+  const [isSyncingSales, setIsSyncingSales] = useState(false);
 
   const persistIds = useCallback((ids: NextIds) => {
     setNextIds(ids);
@@ -646,6 +660,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         sale,
         products: input.skipStockDeduction ? undefined : working,
       });
+      // Durable cross-PC sync — Neon is the source of truth after F5
+      void pushSaleToNeon(sale);
       return sale;
     },
     [products, sales, nextIds, persistProducts, persistSales, persistIds],
@@ -1914,6 +1930,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         cashMovement: nextCashId,
       });
       publishSale({ sale: updatedSale, products: workingProducts });
+      void pushSaleToNeon(updatedSale);
       if (newMovements[0]) {
         publishInventory({ movement: newMovements[0], products: workingProducts });
       }
@@ -2093,6 +2110,206 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [supplierReturns],
   );
 
+  const bumpSaleIds = useCallback(
+    (incoming: Sale[]) => {
+      if (incoming.length === 0) return;
+      const ids = readNextIds();
+      let maxSale = ids.sale;
+      let maxItem = ids.saleItem;
+      for (const s of incoming) {
+        if (typeof s.id === 'number' && s.id >= maxSale) maxSale = s.id + 1;
+        for (const it of s.items ?? []) {
+          if (typeof it.id === 'number' && it.id >= maxItem) maxItem = it.id + 1;
+        }
+      }
+      if (maxSale !== ids.sale || maxItem !== ids.saleItem) {
+        persistIds({ ...ids, sale: maxSale, saleItem: maxItem });
+      }
+    },
+    [readNextIds, persistIds],
+  );
+
+  const mergeRemoteSale = useCallback(
+    (
+      sale: Sale,
+      opts?: { products?: Product[]; applyStockFromItems?: boolean },
+    ): boolean => {
+      if (!sale?.invoiceNumber) return false;
+
+      const prev = load<Sale[]>(KEYS.sales, []);
+      const existingIdx = prev.findIndex(
+        (s) => s.invoiceNumber === sale.invoiceNumber || s.id === sale.id,
+      );
+      const isUpdate = existingIdx >= 0;
+      let changed = false;
+
+      if (isUpdate) {
+        const prevSale = prev[existingIdx];
+        if (
+          prevSale.createdAt !== sale.createdAt ||
+          prevSale.total !== sale.total ||
+          prevSale.status !== sale.status ||
+          (prevSale.returnedTotal ?? 0) !== (sale.returnedTotal ?? 0) ||
+          JSON.stringify(prevSale.items) !== JSON.stringify(sale.items)
+        ) {
+          const next = [...prev];
+          next[existingIdx] = sale;
+          persistSales(next);
+          changed = true;
+        }
+      } else {
+        const next = [sale, ...prev].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+            b.id - a.id,
+        );
+        persistSales(next);
+        changed = true;
+      }
+
+      if (opts?.products?.length) {
+        persistProducts(opts.products);
+      } else if (opts?.applyStockFromItems && !isUpdate && sale.items?.length) {
+        const current = load<Product[]>(KEYS.products, products);
+        const next = current.map((p) => {
+          const line = sale.items.find((i) => i.productId === p.id);
+          if (!line) return p;
+          return {
+            ...p,
+            stockQuantity: Math.max(0, p.stockQuantity - line.quantity),
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        persistProducts(next);
+      }
+
+      if (changed) bumpSaleIds([sale]);
+      return changed;
+    },
+    [bumpSaleIds, persistProducts, persistSales, products],
+  );
+
+  const applyNeonSalesLedger = useCallback(
+    (remoteSales: Sale[]): number => {
+      const local = load<Sale[]>(KEYS.sales, []);
+      const byInvoice = new Map<string, Sale>();
+      for (const s of local) {
+        if (s?.invoiceNumber) byInvoice.set(s.invoiceNumber, s);
+      }
+      let merged = 0;
+      for (const s of remoteSales) {
+        if (!s?.invoiceNumber) continue;
+        const prev = byInvoice.get(s.invoiceNumber);
+        if (
+          !prev ||
+          prev.status !== s.status ||
+          prev.total !== s.total ||
+          (prev.returnedTotal ?? 0) !== (s.returnedTotal ?? 0) ||
+          prev.createdAt !== s.createdAt ||
+          JSON.stringify(prev.items) !== JSON.stringify(s.items)
+        ) {
+          merged += 1;
+        }
+        // Neon is authoritative for shared fields
+        byInvoice.set(s.invoiceNumber, s);
+      }
+      const next = [...byInvoice.values()].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+          b.id - a.id,
+      );
+      persistSales(next);
+      bumpSaleIds(remoteSales);
+      setLastSalesSyncAt(new Date().toISOString());
+      return merged;
+    },
+    [bumpSaleIds, persistSales],
+  );
+
+  const applySalesSyncPayload = useCallback(
+    (payload: SalesSyncPayload | { sales: SalesSyncEntry[] }, deviceId: string): number => {
+      const entries = payload.sales ?? [];
+      let merged = 0;
+      let latestProducts: Product[] | undefined;
+
+      const ordered = [...entries].reverse();
+      for (const entry of ordered) {
+        if (!entry?.sale) continue;
+        if (entry.deviceId && entry.deviceId === deviceId) continue;
+        const did = mergeRemoteSale(entry.sale);
+        if (did) merged += 1;
+        if (entry.products?.length) latestProducts = entry.products;
+      }
+      if (latestProducts?.length) persistProducts(latestProducts);
+      if ('syncedAt' in payload && typeof payload.syncedAt === 'string') {
+        setLastSalesSyncAt(payload.syncedAt);
+      } else {
+        setLastSalesSyncAt(new Date().toISOString());
+      }
+      return merged;
+    },
+    [mergeRemoteSale, persistProducts],
+  );
+
+  const syncSalesFromServer = useCallback(async () => {
+    setIsSyncingSales(true);
+    try {
+      const sock = connectRealtime();
+      const connected = Boolean(sock?.connected || sock);
+      const deviceId = getDeviceId();
+      let merged = 0;
+
+      // 1) Pull durable ledger from Neon (survives F5 / other PCs)
+      const fromNeon = await fetchAllSalesFromNeon({ limit: 2000 });
+      if (fromNeon?.sales) {
+        merged += applyNeonSalesLedger(fromNeon.sales);
+        // Upload any local-only sales so other terminals can see them
+        const local = load<Sale[]>(KEYS.sales, []);
+        const remoteInvoices = new Set(
+          fromNeon.sales.map((s) => s.invoiceNumber).filter(Boolean),
+        );
+        const missing = local.filter(
+          (s) => s.invoiceNumber && !remoteInvoices.has(s.invoiceNumber),
+        );
+        if (missing.length > 0) {
+          await pushSalesBulkToNeon(missing);
+        }
+      }
+
+      // 2) Fast path: in-memory socket buffer (optional)
+      const fromApi = await fetchSalesSyncFromApi();
+      if (fromApi) {
+        merged += applySalesSyncPayload(fromApi, deviceId);
+      }
+      requestSalesSync();
+
+      return { merged, connected };
+    } finally {
+      setIsSyncingSales(false);
+    }
+  }, [applyNeonSalesLedger, applySalesSyncPayload]);
+
+  // Boot: hydrate from Neon so Historial/Registro match other PCs after F5
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const fromNeon = await fetchAllSalesFromNeon({ limit: 2000 });
+      if (cancelled || !fromNeon?.sales) return;
+      applyNeonSalesLedger(fromNeon.sales);
+      const local = load<Sale[]>(KEYS.sales, []);
+      const remoteInvoices = new Set(
+        fromNeon.sales.map((s) => s.invoiceNumber).filter(Boolean),
+      );
+      const missing = local.filter(
+        (s) => s.invoiceNumber && !remoteInvoices.has(s.invoiceNumber),
+      );
+      if (missing.length > 0) await pushSalesBulkToNeon(missing);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyNeonSalesLedger]);
+
   const value = useMemo<DataContextType>(
     () => ({
       products,
@@ -2139,6 +2356,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       listCustomerReturns,
       createSupplierReturn,
       listSupplierReturns,
+      syncSalesFromServer,
+      isSyncingSales,
     }),
     [
       products,
@@ -2185,6 +2404,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       listCustomerReturns,
       createSupplierReturn,
       listSupplierReturns,
+      syncSalesFromServer,
+      isSyncingSales,
     ],
   );
 
@@ -2199,39 +2420,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (remote.deviceId && remote.deviceId === deviceId) return;
       const sale = remote.sale;
       if (!sale?.invoiceNumber) return;
-
-      let isUpdate = false;
-      setSales((prev) => {
-        const existingIdx = prev.findIndex(
-          (s) => s.invoiceNumber === sale.invoiceNumber || s.id === sale.id,
-        );
-        isUpdate = existingIdx >= 0;
-        if (isUpdate) {
-          const next = [...prev];
-          next[existingIdx] = sale;
-          save(KEYS.sales, next);
-          return next;
-        }
-        const next = [sale, ...prev];
-        save(KEYS.sales, next);
-        return next;
+      mergeRemoteSale(sale, {
+        products: remote.products,
+        applyStockFromItems: !remote.products?.length,
       });
+    };
 
-      if (remote.products?.length) {
-        persistProducts(remote.products);
-      } else if (!isUpdate && sale.items?.length) {
-        const current = load<Product[]>(KEYS.products, products);
-        const next = current.map((p) => {
-          const line = sale.items.find((i) => i.productId === p.id);
-          if (!line) return p;
-          return {
-            ...p,
-            stockQuantity: Math.max(0, p.stockQuantity - line.quantity),
-            updatedAt: new Date().toISOString(),
-          };
-        });
-        persistProducts(next);
-      }
+    const onSalesSync = (payload: SalesSyncPayload) => {
+      applySalesSyncPayload(payload, deviceId);
     };
 
     const onInventory = (
@@ -2285,16 +2481,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
     };
 
+    const resyncFromNeon = () => {
+      void fetchAllSalesFromNeon({ limit: 2000 }).then((data) => {
+        if (data?.sales) applyNeonSalesLedger(data.sales);
+      });
+    };
+
+    const resync = () => {
+      resyncFromNeon();
+      requestSalesSync();
+      void fetchSalesSyncFromApi().then((data) => {
+        if (data) applySalesSyncPayload(data, deviceId);
+      });
+    };
+
+    const onSalesUpdated = () => {
+      // Invalidate local cache and refetch durable ledger from PostgreSQL
+      resyncFromNeon();
+    };
+
     sock.on(RealtimeEvents.SALE_CREATED, onSale);
+    sock.on(RealtimeEvents.NEW_SALE, onSale);
+    sock.on(RealtimeEvents.SALES_UPDATED, onSalesUpdated);
+    sock.on(RealtimeEvents.SALES_SYNC, onSalesSync);
     sock.on(RealtimeEvents.INVENTORY_UPDATED, onInventory);
     sock.on(RealtimeEvents.CASH_CLOSED, onCash);
+    sock.on('connect', resync);
+    sock.on('reconnect', resync);
+
+    // Initial catch-up if already connected
+    if (sock.connected) resync();
 
     return () => {
       sock.off(RealtimeEvents.SALE_CREATED, onSale);
+      sock.off(RealtimeEvents.NEW_SALE, onSale);
+      sock.off(RealtimeEvents.SALES_UPDATED, onSalesUpdated);
+      sock.off(RealtimeEvents.SALES_SYNC, onSalesSync);
       sock.off(RealtimeEvents.INVENTORY_UPDATED, onInventory);
       sock.off(RealtimeEvents.CASH_CLOSED, onCash);
+      sock.off('connect', resync);
+      sock.off('reconnect', resync);
     };
-  }, [persistProducts, products]);
+  }, [
+    applyNeonSalesLedger,
+    applySalesSyncPayload,
+    mergeRemoteSale,
+    persistProducts,
+    products,
+  ]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

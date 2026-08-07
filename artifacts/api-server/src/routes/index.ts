@@ -7,12 +7,18 @@ import productsRouter from "./products";
 import inventoryRouter from "./inventory";
 import salesRouter from "./sales";
 import dashboardRouter from "./dashboard";
+import realtimeSyncRouter from "./realtime-sync";
+import posSyncRouter from "./pos-sync";
 
 const router: IRouter = Router();
 
 // ── Public routes (no auth required) ─────────────────────────────────────────
 router.use(authRouter);
 router.use(healthRouter);
+/** POS multi-device sales buffer (Socket.IO mirror) */
+router.use(realtimeSyncRouter);
+/** Durable Neon POS sales ledger (cross-PC source of truth) */
+router.use(posSyncRouter);
 
 // ── Protected routes (must be authenticated) ─────────────────────────────────
 router.use(requireAuth);
