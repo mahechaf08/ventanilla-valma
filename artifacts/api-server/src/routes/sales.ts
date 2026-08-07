@@ -68,6 +68,10 @@ function generateInvoiceNumber(): string {
 }
 
 router.get("/sales/recent", async (req, res): Promise<void> => {
+  if (req.session.userRole !== "admin") {
+    res.status(403).json({ error: "Acceso de administrador requerido" });
+    return;
+  }
   const parsed = ListRecentSalesQueryParams.safeParse(req.query);
   const limit = parsed.success ? (parsed.data.limit ?? 10) : 10;
 
@@ -82,6 +86,10 @@ router.get("/sales/recent", async (req, res): Promise<void> => {
 });
 
 router.get("/sales", async (req, res): Promise<void> => {
+  if (req.session.userRole !== "admin") {
+    res.status(403).json({ error: "Acceso de administrador requerido" });
+    return;
+  }
   const parsed = ListSalesQueryParams.safeParse(req.query);
   const limit = parsed.success ? (parsed.data.limit ?? 50) : 50;
   const offset = parsed.success ? (parsed.data.offset ?? 0) : 0;
@@ -216,6 +224,10 @@ router.post("/sales", async (req, res): Promise<void> => {
 });
 
 router.get("/sales/:id", async (req, res): Promise<void> => {
+  if (req.session.userRole !== "admin") {
+    res.status(403).json({ error: "Acceso de administrador requerido" });
+    return;
+  }
   const params = GetSaleParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

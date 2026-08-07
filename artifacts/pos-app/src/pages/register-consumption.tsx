@@ -112,7 +112,14 @@ export default function RegisterConsumption() {
   };
 
   const handleSubmit = () => {
-    if (!selectedEmployee) {
+    if (!user) return;
+
+    // Non-admins can only register consumption for themselves
+    const target = isAdmin
+      ? selectedEmployee
+      : { id: user.id, username: user.username };
+
+    if (!target) {
       toast.error('No hay sesión de empleado activa');
       return;
     }
@@ -120,20 +127,23 @@ export default function RegisterConsumption() {
       toast.error('Agrega productos al consumo');
       return;
     }
-    if (!user) return;
 
     setSaving(true);
     try {
       registerConsumption({
-        employeeId: selectedEmployee.id,
-        employeeName: selectedEmployee.username,
+        employeeId: target.id,
+        employeeName: target.username,
         registeredBy: user.username,
         items: cart.map((i) => ({
           productId: i.product.id,
           quantity: i.quantity,
         })),
       });
-      toast.success(`Consumo registrado para ${selectedEmployee.username}`);
+      toast.success(
+        isAdmin
+          ? `Consumo registrado para ${target.username}`
+          : 'Consumo registrado correctamente',
+      );
       setCart([]);
     } catch (err: any) {
       toast.error(err?.message || 'Error al registrar el consumo');
@@ -152,7 +162,9 @@ export default function RegisterConsumption() {
               Registrar consumo interno
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Descuenta inventario de inmediato. No cuenta como venta hasta que el admin liquide la cuenta.
+              {isAdmin
+                ? 'Descuenta inventario de inmediato. No cuenta como venta hasta que el admin liquide la cuenta.'
+                : 'Selecciona productos para registrar tu consumo interno. El inventario se descuenta de inmediato.'}
             </p>
           </div>
           <div className={isAdmin ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'}>
@@ -218,9 +230,13 @@ export default function RegisterConsumption() {
                     <div className="text-xs text-muted-foreground mb-1">{product.category}</div>
                     <div className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{product.name}</div>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="font-mono font-semibold text-blue-700 text-sm">
-                        {formatCOP(product.price)}
-                      </span>
+                      {isAdmin ? (
+                        <span className="font-mono font-semibold text-blue-700 text-sm">
+                          {formatCOP(product.price)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Agregar</span>
+                      )}
                       <span className={out ? 'inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase bg-red-100 text-red-800' : 'inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase bg-amber-500 text-slate-900'}>
                         {out ? 'Sin cantidad' : `${product.stockQuantity} uds`}
                       </span>
@@ -273,14 +289,20 @@ export default function RegisterConsumption() {
                 <div key={item.product.id} className="bg-white border border-slate-200 rounded-xl shadow-sm p-3 space-y-2">
                   <div className="flex justify-between gap-2">
                     <div className="text-sm font-medium leading-tight">{item.product.name}</div>
-                    <div className="font-mono text-sm font-semibold">
-                      {formatCOP(item.product.price * item.quantity)}
-                    </div>
+                    {isAdmin && (
+                      <div className="font-mono text-sm font-semibold">
+                        {formatCOP(item.product.price * item.quantity)}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {formatCOP(item.product.price)} / u.
-                    </span>
+                    {isAdmin ? (
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatCOP(item.product.price)} / u.
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Cantidad</span>
+                    )}
                     <div className="flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 p-1">
                       <Button
                         variant="ghost"
@@ -313,13 +335,23 @@ export default function RegisterConsumption() {
 
         <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
           <Separator />
-          <div className="rounded-xl px-4 py-3 text-center bg-amber-600 text-white">
-            <div className="text-xs uppercase tracking-widest text-white/90 mb-1">Total interno</div>
-            <div className="text-2xl font-mono font-bold">{formatCOP(total)}</div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Se acumula en el saldo del empleado hasta que el admin liquide la cuenta (en cualquier momento).
-          </p>
+          {isAdmin ? (
+            <>
+              <div className="rounded-xl px-4 py-3 text-center bg-amber-600 text-white">
+                <div className="text-xs uppercase tracking-widest text-white/90 mb-1">Total interno</div>
+                <div className="text-2xl font-mono font-bold">{formatCOP(total)}</div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se acumula en el saldo del empleado hasta que el admin liquide la cuenta (en cualquier momento).
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center">
+              {cart.length === 0
+                ? 'Agrega productos y confirma el registro.'
+                : `${cart.reduce((n, i) => n + i.quantity, 0)} producto(s) listos para registrar.`}
+            </p>
+          )}
           <Button
             className="w-full h-11 bg-amber-600 hover:bg-amber-700 text-white font-bold"
             disabled={!selectedEmployee || cart.length === 0 || saving}

@@ -223,7 +223,8 @@ export default function SupplierInvoicesPage() {
               Pago de Facturas
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Registra el pago a un proveedor. Solo se pide el nombre y el valor.
+              Registra el pago de una factura de proveedor a tu nombre. No puedes ver
+              totales ni pagos de otros cajeros.
             </p>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">

@@ -35,7 +35,9 @@ import {
 import { formatCOP } from '@/lib/currency';
 import { isDateKeyInRange, toDateKey } from '@/lib/date';
 import { formatPaymentSummary } from '@/lib/payments';
+import { saleBelongsToCashier } from '@/lib/rbac';
 import type { Sale } from '@/types';
+import { cn } from '@/lib/utils';
 
 function todayKey() {
   return toDateKey(new Date());
@@ -43,7 +45,8 @@ function todayKey() {
 
 export default function SalesInvoicesPage() {
   const { sales } = useData();
-  const { listUsers } = useAuth();
+  const { user, listUsers } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   const [fromKey, setFromKey] = useState(() => todayKey());
   const [toKey, setToKey] = useState(() => todayKey());
@@ -52,6 +55,7 @@ export default function SalesInvoicesPage() {
   const [printSale, setPrintSale] = useState<Sale | null>(null);
 
   const cashierOptions = useMemo(() => {
+    if (!isAdmin) return [];
     const names = new Set<string>();
     for (const s of sales) {
       if (s.source === 'employee_consumption') continue;
@@ -59,12 +63,17 @@ export default function SalesInvoicesPage() {
     }
     for (const u of listUsers()) names.add(u.username);
     return [...names].sort((a, b) => a.localeCompare(b, 'es'));
-  }, [sales, listUsers]);
+  }, [sales, listUsers, isAdmin]);
 
   const invoices = useMemo(() => {
     const q = invoiceQuery.trim().toLowerCase();
     return sales
       .filter((s) => s.source !== 'employee_consumption')
+      .filter((s) => {
+        // Cashiers only see their own issued receipts
+        if (!isAdmin) return saleBelongsToCashier(s, user);
+        return true;
+      })
       .filter((s) => isDateKeyInRange(s.createdAt, fromKey, toKey))
       .filter((s) => {
         if (!q) return true;
@@ -74,7 +83,7 @@ export default function SalesInvoicesPage() {
         );
       })
       .filter((s) => {
-        if (cashier === 'all') return true;
+        if (!isAdmin || cashier === 'all') return true;
         return (s.cashier?.trim() || 'Sin asignar') === cashier;
       })
       .sort(
@@ -82,7 +91,14 @@ export default function SalesInvoicesPage() {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
           b.id - a.id,
       );
-  }, [sales, fromKey, toKey, invoiceQuery, cashier]);
+  }, [sales, fromKey, toKey, invoiceQuery, cashier, isAdmin, user]);
+
+  const openPrint = (sale: Sale) => {
+    if (!isAdmin && !saleBelongsToCashier(sale, user)) {
+      return;
+    }
+    setPrintSale(sale);
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
@@ -93,14 +109,21 @@ export default function SalesInvoicesPage() {
             Factura de Ventas
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Consulta e imprime facturas / tiques de ventas a clientes.
+            {isAdmin
+              ? 'Consulta e imprime facturas / tiques de todos los cajeros.'
+              : 'Consulta e imprime únicamente tus facturas / tiques emitidos.'}
           </p>
         </div>
-        <SyncSalesButton className="flex-shrink-0" />
+        {isAdmin && <SyncSalesButton className="flex-shrink-0" />}
       </div>
 
       <div className="px-6 py-4 border-b border-slate-200 bg-white flex-shrink-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl">
+        <div
+          className={cn(
+            'grid grid-cols-1 md:grid-cols-2 gap-3 max-w-5xl',
+            isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-3',
+          )}
+        >
           <div className="space-y-1.5">
             <Label htmlFor="inv-from">Desde</Label>
             <Input
@@ -132,26 +155,29 @@ export default function SalesInvoicesPage() {
               />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Cajero</Label>
-            <Select value={cashier} onValueChange={setCashier}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los cajeros</SelectItem>
-                {cashierOptions.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {isAdmin && (
+            <div className="space-y-1.5">
+              <Label>Cajero</Label>
+              <Select value={cashier} onValueChange={setCashier}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los cajeros</SelectItem>
+                  {cashierOptions.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <p className="text-xs text-slate-500 mt-3">
           {invoices.length} factura{invoices.length === 1 ? '' : 's'} encontrada
           {invoices.length === 1 ? '' : 's'}
+          {!isAdmin && ' (solo las tuyas)'}
         </p>
       </div>
 
@@ -198,7 +224,7 @@ export default function SalesInvoicesPage() {
                         size="sm"
                         variant="outline"
                         className="gap-1.5"
-                        onClick={() => setPrintSale(sale)}
+                        onClick={() => openPrint(sale)}
                       >
                         <Printer className="w-3.5 h-3.5" />
                         Imprimir Factura

@@ -15,8 +15,9 @@ function isSalePayload(value: unknown): value is Record<string, unknown> {
 
 /**
  * GET /api/pos-sync/sales
- * Returns ALL shared POS sales from Neon (no cashier/session filter).
- * Query: limit (default 2000), offset, from, to (YYYY-MM-DD Bogota keys)
+ * Shared POS sales ledger from Neon.
+ * Query: limit, offset, from, to (YYYY-MM-DD Bogota keys)
+ * If the request has a non-admin API session, only that cashier's sales are returned.
  */
 router.get("/pos-sync/sales", async (req, res): Promise<void> => {
   try {
@@ -33,6 +34,16 @@ router.get("/pos-sync/sales", async (req, res): Promise<void> => {
     if (from) conditions.push(gte(posSalesTable.dateKey, from));
     if (to) conditions.push(lte(posSalesTable.dateKey, to));
 
+    // Session-scoped cashiers may only query their own ledger rows
+    const sessionRole = req.session?.userRole;
+    const sessionUserId = req.session?.userId;
+    const sessionUsername = req.session?.username;
+    if (sessionRole && sessionRole !== "admin" && sessionUserId != null) {
+      conditions.push(
+        sql`(${posSalesTable.cashierUserId} = ${sessionUserId} OR ${posSalesTable.cashier} = ${sessionUsername ?? ""})`,
+      );
+    }
+
     const rows = await db
       .select()
       .from(posSalesTable)
@@ -47,7 +58,6 @@ router.get("/pos-sync/sales", async (req, res): Promise<void> => {
         if (!isSalePayload(payload)) return null;
         return {
           ...payload,
-          // Prefer durable server timestamps / invoice key
           invoiceNumber: row.invoiceNumber,
           createdAt:
             typeof payload.createdAt === "string"

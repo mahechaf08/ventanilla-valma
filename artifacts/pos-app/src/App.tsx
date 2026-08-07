@@ -43,8 +43,12 @@ function Router() {
       <Layout>
         <Switch>
           <Route path="/pos" component={POS} />
-          <Route path="/consumo" component={RegisterConsumption} />
+          <Route path="/facturas-ventas" component={SalesInvoicesPage} />
+          <Route path="/sales-invoices">
+            <Redirect to="/facturas-ventas" />
+          </Route>
           <Route path="/pago-facturas" component={SupplierInvoicesPage} />
+          <Route path="/consumo" component={RegisterConsumption} />
           <Route>
             <Redirect to="/pos" />
           </Route>

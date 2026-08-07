@@ -90,8 +90,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const employeeNavItems: NavItem[] = [
     { href: '/pos', label: 'Punto de Venta', icon: ShoppingCart },
-    { href: '/consumo', label: 'Registrar consumo', icon: Coffee },
+    { href: '/facturas-ventas', label: 'Factura de Ventas', icon: FileText },
     { href: '/pago-facturas', label: 'Pago de Facturas', icon: Receipt },
+    { href: '/consumo', label: 'Registrar consumo', icon: Coffee },
   ];
 
   const usersGroupActive = usersGroupPaths.some((p) => location === p);
